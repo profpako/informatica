@@ -183,6 +183,13 @@ label.field {
 .range-value span {
   color:var(--muted)
 }
+.range-formula,.encoding-info {
+  font-size:12px;
+  line-height:1.7;
+  color:var(--muted);
+  overflow-wrap:anywhere
+}
+.encoding-info {grid-column:1 / -1}
 .input-help {
   font-size:12px;
   color:var(--muted);
@@ -353,6 +360,8 @@ label.field {
   font-size:12px;
   color:var(--muted)
 }
+.stage-content.notes-below {display:flex; flex-direction:column}
+.notes-below .notes {border-left:0; border-top:1px solid var(--line)}
 .division-layout {
   display:flex;
   gap:12px
@@ -888,8 +897,8 @@ label.field {
   .tabs {gap:16px}
   .tab {font-size:13px}
   .ranges {grid-template-columns:1fr; gap:0}
-  .range {display:flex; justify-content:space-between; gap:10px}
-  .range-value {text-align:right}
+  .range {display:block}
+  .range-value {text-align:left}
   .stage-top {padding:10px 12px}
   .stage-top h3 {font-size:13px}
   .step-meta {min-width:100px}
@@ -953,7 +962,12 @@ label.field {
       <div class="presets" aria-label="Dimensioni rapide"><button type="button" data-n="4">4 bit</button><button type="button" data-n="8" class="active">8 bit</button><button type="button" data-n="12">12 bit</button><button type="button" data-n="16">16 bit</button></div>
       <div class="n-input"><input id="bit-count" type="number" min="1" max="1024" step="1" value="8" inputmode="numeric"><span>bit</span></div><p class="limit">Qualsiasi dimensione da 1 a 1024 bit.</p>
       <form id="convert-form" novalidate><label class="field" id="number-label" for="number-input">Numero decimale</label><input id="number-input" type="text" inputmode="numeric" value="13" autocomplete="off" spellcheck="false" aria-describedby="input-help"><div id="second-operand" hidden><label class="field" for="second-input">Secondo operando B · decimale</label><input id="second-input" type="text" inputmode="numeric" value="-5" autocomplete="off" spellcheck="false" aria-describedby="input-help"></div><p class="input-help" id="input-help">Inserisci un numero naturale, per esempio 13.</p><button class="primary" id="convert-button" type="submit">Converti / Mostra passaggi</button></form>
-      <div class="ranges" aria-label="Intervalli rappresentabili"><div class="range" id="range-u"><div class="range-title">Naturali · unsigned</div><div class="range-value" id="unsigned-range"></div></div><div class="range" id="range-s"><div class="range-title">Segno e modulo / C1</div><div class="range-value" id="symmetric-range"></div></div><div class="range" id="range-c"><div class="range-title">Complemento a due</div><div class="range-value" id="twos-range"></div></div></div>
+      <div class="ranges" aria-label="Intervalli rappresentabili">
+        <p class="encoding-info">N è il numero di bit. Ogni bit ha 2 stati: le informazioni codificabili (configurazioni binarie) sono 2<sup>N</sup> = <span id="configuration-count"></span>.</p>
+        <div class="range" id="range-u"><div class="range-title">Naturali · unsigned</div><div class="range-value" id="unsigned-range"></div><p class="range-formula">min = 0<br>max = 2<sup>N</sup> − 1<br>Valori distinti: 2<sup>N</sup></p></div>
+        <div class="range" id="range-s"><div class="range-title">Segno e modulo / C1</div><div class="range-value" id="symmetric-range"></div><p class="range-formula">min = −(2<sup>N − 1</sup> − 1)<br>max = 2<sup>N − 1</sup> − 1<br>Valori distinti: 2<sup>N</sup> − 1 = <span id="symmetric-count"></span><br>Due codifiche dello zero: +0 e −0.</p></div>
+        <div class="range" id="range-c"><div class="range-title">Complemento a due</div><div class="range-value" id="twos-range"></div><p class="range-formula">min = −2<sup>N − 1</sup><br>max = 2<sup>N − 1</sup> − 1<br>Valori distinti: 2<sup>N</sup><br>Una sola codifica dello zero.</p></div>
+      </div>
       <button class="example-link" id="example" type="button">Prova un esempio: 13</button>
     </aside>
     <section class="workbench" aria-label="Laboratorio delle conversioni">
@@ -1185,12 +1199,15 @@ function runSelfChecks() {
 const $ = id => document.getElementById(id);
 let mode = 'natural', direction = 'dec', rep = 'c2', lesson = null, step = 0, timer = null;
 function escapeHtml(value) {return String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
+function formatPowers(value) {return escapeHtml(value).replace(/2\^(\d+|N)/g,'2<sup>$1</sup>');}
 function stop() {if (timer !== null) clearInterval(timer); timer = null; $('play').innerHTML = '<span aria-hidden="true">▶</span> Riproduci animazione';}
 // ponytail: griglia limitata a 1024 bit; aumentare i limiti se servono registri più grandi.
 function getN() {const n = Number($('bit-count').value); if (!Number.isInteger(n) || n < 1 || n > 1024) throw new Error('La dimensione del registro deve essere un numero intero tra 1 e 1024 bit.'); return n;}
 function updateRanges() {
   let n; try {n = getN();} catch {return;}
   const range = limits(n);
+  $('configuration-count').textContent = String(range.unsigned + 1n);
+  $('symmetric-count').textContent = String(range.unsigned);
   $('unsigned-range').textContent = `0 → ${range.unsigned}`;
   $('symmetric-range').textContent = `${-range.symmetric} → +${range.symmetric}`;
   $('twos-range').textContent = `${range.minC2} → +${range.maxC2}`;
@@ -1249,6 +1266,7 @@ function revealCurrent(container) {
 }
 function render() {
   const sumMode = mode === 'sum', signed = mode !== 'natural';
+  document.querySelector('.stage-content').classList.toggle('notes-below',!signed && direction === 'bin');
   $('representation-toolbar').hidden = sumMode;
   $('directions').hidden = signed; $('representations').hidden = mode !== 'signed'; $('quick-label').hidden = mode !== 'signed' || rep !== 'c2'; $('sign-legend').hidden = !signed;
   $('second-operand').hidden = !sumMode; $('sum-examples').hidden = !sumMode;
@@ -1265,16 +1283,21 @@ function render() {
   const frame = lesson ? lesson.frames[step] : null;
   $('step-title').textContent = frame ? frame.title : 'Scegli un valore rappresentabile';
   $('step-count').textContent = frame ? `Passaggio ${step} di ${lesson.frames.length - 1}` : 'In attesa';
-  $('note').textContent = frame ? frame.note : 'Correggi il numero o aumenta la dimensione del registro, poi premi Converti / Mostra passaggi.';
+  $('note').innerHTML = formatPowers(frame ? frame.note : 'Correggi il numero o aumenta la dimensione del registro, poi premi Converti / Mostra passaggi.');
   $('carry-explanation').innerHTML = sumMode && frame && (frame.active === 0 || frame.done) ? `<details class="carry-explanation" aria-label="Spiegazione del riporto finale">
         <summary>Perché scartiamo il riporto finale?</summary>
-        <p>${escapeHtml(lesson.carryRule)}</p>
+        <p>${formatPowers(lesson.carryRule)}</p>
         <p>In C2 un negativo x è codificato come 2<sup>${lesson.n}</sup> + x. Sommiamo i codici binari, poi conserviamo il resto della divisione per ${lesson.modulus}.</p>
         <div class="formula">Codici letti senza segno: ${lesson.unsignedA} + ${lesson.unsignedB} = ${lesson.encodedSum}<br>${lesson.encodedSum} = ${lesson.carry} × ${lesson.modulus} + ${lesson.rawResult}<br>Riporto esterno: ${lesson.carry} · Codice rimasto: ${lesson.rawResult}<br>Registro: ${lesson.final}₂ → ${lesson.represented}₁₀ in C2</div>
         <p><strong>Possiamo fidarci del risultato?</strong><br>${escapeHtml(lesson.carryDecision)}</p>
       </details>` : '';
   $('notes-pane').scrollTop = 0;
-  $('note-detail').textContent = lesson ? `N = ${lesson.n}: il registro mantiene sempre esattamente ${lesson.n} bit. ${sumMode ? 'Scartare il riporto significa lavorare modulo 2^N. Il risultato è valido solo senza overflow: i due riporti del MSB devono essere uguali.' : signed ? 'Il MSB indica il segno.' : 'Ogni bit ha un peso positivo.'}` : 'L’intervallo dipende sia da N sia dalla rappresentazione scelta.';
+  $('note-detail').innerHTML = lesson ? formatPowers(`N = ${lesson.n}: il registro mantiene sempre esattamente ${lesson.n} bit. ${sumMode ? 'Scartare il riporto significa lavorare modulo 2^N. Il risultato è valido solo senza overflow: i due riporti del MSB devono essere uguali.' : signed ? 'Il MSB indica il segno.' : 'Ogni bit ha un peso positivo.'}`) : 'L’intervallo dipende sia da N sia dalla rappresentazione scelta.';
+  if (lesson && signed) {
+    const positiveZero = '0'.repeat(lesson.n);
+    const negativeZero = rep === 'sm' ? '1' + '0'.repeat(lesson.n - 1) : '1'.repeat(lesson.n);
+    $('note-detail').innerHTML += `<p>${sumMode || rep === 'c2' ? `In C2 lo zero ha una sola codifica: <span class="mono">${positiveZero}</span>. NOT + 1 applicato allo zero restituisce lo stesso codice, scartando il riporto esterno.` : `In ${rep === 'sm' ? 'segno e modulo' : 'C1'}: +0 = <span class="mono">${positiveZero}</span> e −0 = <span class="mono">${negativeZero}</span>. Due codici rappresentano lo stesso valore: rimangono 2<sup>N</sup> − 1 valori distinti. La conversione dello zero usa +0.`}</p>`;
+  }
   $('visual').innerHTML = frame ? visualise(frame) : '<div class="empty">Il nuovo registro apparirà dopo una conversione valida.</div>';
   $('register-title').textContent = lesson ? `Il registro · ${lesson.n} bit` : 'Il registro';
   $('register').innerHTML = frame ? renderBits(frame.bits,lesson.n,frame,false,!signed && direction === 'bin') : '';
