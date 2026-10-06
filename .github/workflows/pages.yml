@@ -22,13 +22,14 @@ jobs:
           python-version: '3.x'
       - uses: actions/configure-pages@v5
       - name: Verifica e aggiorna l'indice
+        working-directory: sito
         run: |
           python3 scripts/check_index.py
           node scripts/check_theme.js
           python3 scripts/build_index.py
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: '.'
+          path: 'sito'
 
   deploy:
     needs: build

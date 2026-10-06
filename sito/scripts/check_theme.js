@@ -1,4 +1,4 @@
-// Esegui con: node scripts/check_theme.js. Usa soltanto moduli Node incorporati.
+// Dalla radice: node sito/scripts/check_theme.js. Usa soltanto moduli Node incorporati.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
