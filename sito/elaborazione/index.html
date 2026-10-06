@@ -80,9 +80,7 @@ h3 {
   font-size:12px
 }
 .shell {
-  width:min(1120px,calc(100% - 96px));
   min-height:100dvh;
-  margin:auto;
   padding:0;
   display:flex;
   flex-direction:column
@@ -96,6 +94,7 @@ h3 {
   flex:1
 }
 .settings {
+  min-width:0;
   background:var(--panel);
   border:1px solid var(--line);
   border-radius:20px;
@@ -467,6 +466,7 @@ label.field {
 }
 .register-head {
   display:flex;
+  flex-wrap:wrap;
   justify-content:space-between;
   gap:12px;
   align-items:center;
@@ -568,10 +568,10 @@ label.field {
   border-top:1px solid var(--line);
   padding-top:6px;
   margin-top:4px;
-  max-height:65px;
-  overflow:auto
+  flex-wrap:wrap
 }
 .result-number {
+  flex:1 1 15rem;
   font:16px var(--mono);
   overflow-wrap:anywhere;
   min-width:0
@@ -583,7 +583,7 @@ label.field {
 .result-status {
   font-size:12px;
   color:var(--green);
-  white-space:nowrap
+  white-space:normal
 }
 .controls {
   display:flex;
@@ -614,7 +614,7 @@ label.field {
   color:var(--muted)
 }
 .speed select {
-  padding:6px
+  padding:6px 36px 6px 10px
 }
 .progress {
   display:flex;
@@ -702,7 +702,8 @@ label.field {
 }
 .sum-term .product {
   font:11px var(--mono);
-  color:var(--muted)
+  color:var(--muted);
+  overflow-wrap:anywhere
 }
 .sum-term .term-value {
   font:13px var(--mono);
@@ -871,14 +872,13 @@ label.field {
 .animation-console {position:sticky; top:0; z-index:3; background:var(--panel); border-radius:10px 7px 0 0; display:flex; flex-direction:column}
 .animation-console .controls {order:-1; border-radius:10px 7px 0 0}
 @media (max-width:1100px) {
-  .shell {width:calc(100% - 40px); padding:0}
   .layout {grid-template-columns:220px minmax(0,1fr); gap:12px}
   .settings {padding:14px}
-  .stage-content {grid-template-columns:minmax(0,1fr) 260px}
+  .stage-content {grid-template-columns:minmax(0,1fr)}
+  .notes {border-left:0; border-top:1px solid var(--line)}
   .controls .speed {margin-left:0}
 }
 @media (max-width:850px) {
-  .shell {height:auto; min-height:100dvh; width:calc(100% - 40px); padding:0}
   .layout {grid-template-columns:1fr; gap:16px}
   .settings {overflow:visible; position:static; max-height:none}
   .ranges {display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px}
@@ -933,7 +933,19 @@ label.field {
 .animation-console,.animation-console .controls {border-radius:19px 19px 0 0}
 .register-panel {border-radius:0 0 19px 19px}
 .site-footer {margin-top:32px}
-@media (max-width:520px) {.shell {width:calc(100% - 32px)} .tabs {gap:16px} .tab {font-size:.875rem} .lesson-intro {padding-top:28px}}
+@media (max-width:520px) {
+  .tabs {gap:8px}
+  .tab {flex:1; min-width:0; white-space:normal; font-size:.875rem; line-height:1.4}
+  .lesson-intro {padding-top:28px}
+  .stage-top {flex-wrap:wrap}
+  .step-meta {flex:1; min-width:100px}
+  .controls button {flex:1 1 auto}
+  .controls .speed {flex:1; justify-content:flex-end}
+}
+@media (max-height:500px) {
+  .settings {position:static; max-height:none}
+  .animation-console {position:static}
+}
 </style>
 </head>
 <body>
