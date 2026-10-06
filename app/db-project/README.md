@@ -100,7 +100,7 @@ I nomi non possono contenere `:`, parentesi quadre o a capo; per entità e ruoli
 - Doppio clic su un elemento: modifica. Con la tastiera, Tab lo seleziona e Invio apre il modulo.
 - Frecce: spostamento di 5 unità; Maiusc + frecce: 25 unità.
 - Ctrl/⌘ + Z: annulla; Ctrl/⌘ + Maiusc + Z: ripristina. Lo storico comprende fino a 60 operazioni nella sessione corrente.
-- **Riordina** ricolloca entità e associazioni considerando anche lo spazio dei loro attributi. Ripristina le posizioni automatiche dei cerchi, mantenendo i lati assegnati ad attributi singoli o gruppi. L’operazione si può annullare.
+- **Riordina** confronta disposizioni basate sui collegamenti, privilegiando centri allineati, linee rette e uno schema equilibrato. Colloca i rombi a metà strada fra le entità; quando serve spazio li sposta mantenendo uguale distanza dai partecipanti. Riassegna anche i lati degli attributi, suddividendo i ventagli lunghi e mantenendo insieme gli attributi composti. L’operazione si può annullare.
 
 ## Salvataggio e limiti
 

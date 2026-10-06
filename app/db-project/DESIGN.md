@@ -199,7 +199,7 @@ La barra delle fasi riusa select e pulsanti nativi per ER iniziale, ER ristruttu
 ### Diagramma interattivo
 Il canvas live è un gruppo SVG con nodi e attributi raggiungibili da tastiera. Trascinare un nodo ridisegna i collegamenti; porte separate e corsie a gomito distinguono più collegamenti sullo stesso lato. Tratti disgiunti possono condividere una corsia. Cardinalità e ruoli sono collocati insieme vicino ai segmenti, cercando spazio libero da nodi, attributi e altre etichette. I ruoli distinguono le associazioni ricorsive.
 
-Riordina misura l’ingombro di ciascun nodo con tutti gli attributi, distanzia la griglia delle entità e cerca spazio per le associazioni. La misura del testo usa stime conservative condivise. La ricerca locale delle etichette non equivale a un instradamento completo attorno agli ostacoli; diagrammi affollati manualmente possono richiedere correzioni di posizione.
+Riordina confronta griglie di centri allineati e scambia le posizioni delle entità per ridurre collegamenti diagonali, incroci e passaggi attraverso altri nodi, rispettando i livelli delle gerarchie. Sceglie i lati degli attributi liberi dai collegamenti e valuta anche la suddivisione dei ventagli lunghi, mantenendo interi i gruppi composti. La griglia riserva gli ingombri di nodi, attributi e rombi; le associazioni binarie sono centrate o spostate lungo l’asse equidistante dai partecipanti. La ricerca è deterministica e limitata: schemi densi possono richiedere correzioni manuali. La misura del testo usa stime conservative condivise; la ricerca locale delle etichette non equivale a un instradamento completo attorno agli ostacoli.
 
 Il trascinamento dello sfondo sposta la vista. Invio apre il modulo, le frecce spostano la selezione.
 

@@ -38,7 +38,9 @@ test('ER esteso e ristrutturazione: alberi, ISA, copie, cardinalità e identific
   assert.ok(ER.attributePosition(node, '2').x > node.x);
   assert.equal(ER.attributeSide(node, '1.1'), 'bottom');
   assert.deepEqual(ER.validate(JSON.parse(JSON.stringify(arranged))), arranged);
-  assert.deepEqual(ER.layout(ER.copy(arranged)).entities[0].attributeSides, node.attributeSides, 'Riordina should preserve chosen sides');
+  const optimized = ER.layout(ER.copy(arranged));
+  assert.deepEqual(ER.serialize(optimized), ER.serialize(arranged), 'Riordina may change attribute sides, preserving the schema');
+  assert.equal(ER.attributeSide(optimized.entities[0], '1.0'), ER.attributeSide(optimized.entities[0], '1'), 'Compound attributes move together');
   assert.doesNotMatch(ER.svg(arranged), /NaN|undefined/);
   const isa = ER.render(arranged).markup.match(/<path class="connection" d="M([^,]+),([^H]+)H([^V]+)V([^\"]+)"/);
   assert.ok(isa, 'ISA should leave sideways when the bottom compound fan is occupied');

@@ -214,22 +214,127 @@
     return lines.join('\n');
   }
   function layout(model) {
-    // ponytail: collision-free node packing for classroom schemas; a graph-layout engine can reduce crossings in dense graphs.
     const nodes = [...model.entities, ...model.relationships];
-    nodes.forEach(n => { n.x = n.y = 0; n.side ||= 'top'; n.attributePositions = {}; });
-    const footprints = model.entities.map(nodeBounds);
-    const cellWidth = Math.max(200, ...footprints.map(b => b.right - b.left)) + 440;
-    const cellHeight = Math.max(200, ...footprints.map(b => b.bottom - b.top)) + 400;
-    const columns = Math.max(1, Math.min(Math.ceil(Math.sqrt(model.entities.length)), Math.floor(44000 / cellWidth)));
-    const levels = new Map();
+    // Start from the schema, not the previous drawing: repeating Riordina must be stable.
+    nodes.forEach(n => { n.x = n.y = 0; n.side = 'top'; n.attributeSides = {}; n.attributePositions = {}; });
+    if (!model.entities.length) return model;
+    const footprints = new Map();
+    function measuredBounds(node) {
+      const key = `${node.id}:${node.side}:${JSON.stringify(node.attributeSides)}`;
+      if (!footprints.has(key)) footprints.set(key, nodeBounds({ ...node, x: 0, y: 0 }));
+      const box = footprints.get(key);
+      return { left: box.left + node.x, right: box.right + node.x, top: box.top + node.y, bottom: box.bottom + node.y };
+    }
+    const entities = new Map(model.entities.map(e => [e.id, e]));
+    const links = model.relationships.map(r => r.ends.map(end => end.entity)).filter(([a, b]) => a !== b);
+    (model.hierarchies || []).forEach(h => h.children.forEach(id => links.push([h.parent, id])));
     const depthOf = id => { const h = (model.hierarchies || []).find(h => h.children.includes(id)); return h ? 1 + depthOf(h.parent) : 0; };
-    model.entities.forEach((e, i) => { const depth = depthOf(e.id); if (!levels.has(depth)) levels.set(depth, []); levels.get(depth).push({ e, box: footprints[i] }); });
-    let firstRow = 0;
-    [...levels.entries()].sort((a, b) => a[0] - b[0]).forEach(([, list]) => {
-      list.forEach(({ e, box }, i) => { e.x = 80 - box.left + (i % columns) * cellWidth; e.y = 80 - box.top + (firstRow + Math.floor(i / columns)) * cellHeight; });
-      firstRow += Math.ceil(list.length / columns);
+    const depths = new Map(model.entities.map(e => [e.id, depthOf(e.id)]));
+    const degree = id => links.filter(pair => pair.includes(id)).length;
+    const order = [...model.entities].sort((a, b) => depths.get(a.id) - depths.get(b.id) || degree(b.id) - degree(a.id) || links.findIndex(pair => pair.includes(a.id)) - links.findIndex(pair => pair.includes(b.id))).map(e => e.id);
+    function topologyScore(positions) {
+      let score = 0;
+      const segments = links.map(([a, b]) => [positions.get(a), positions.get(b)]);
+      segments.forEach(([a, b]) => {
+        const dx = Math.abs(a.x - b.x), dy = Math.abs(a.y - b.y);
+        score += 10 * (dx + dy) + (dx && dy ? 35 : 0);
+        positions.forEach(p => {
+          if (p === a || p === b) return;
+          if ((!dx && p.x === a.x && p.y > Math.min(a.y, b.y) && p.y < Math.max(a.y, b.y)) ||
+              (!dy && p.y === a.y && p.x > Math.min(a.x, b.x) && p.x < Math.max(a.x, b.x))) score += 150;
+        });
+      });
+      const cross = (a, b, p) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
+      segments.forEach(([a, b], i) => segments.slice(i + 1).forEach(([c, d]) => {
+        if (cross(a, b, c) * cross(a, b, d) < 0 && cross(c, d, a) * cross(c, d, b) < 0) score += 60;
+      }));
+      return score;
+    }
+    function arrangeAttributes(node, blocked) {
+      const sides = ['top', 'bottom', 'left', 'right'];
+      let best, bestScore = Infinity;
+      const candidates = sides.map(side => ({ side, attributeSides: {} }));
+      // Keep compound attributes together; split long fans over the free sides.
+      const free = sides.filter(s => !blocked[s]);
+      if (node.attributes.length > 7 && free.length > 1) {
+        const groups = [free, ...free.flatMap((s, i) => free.slice(i + 1).map(t => [s, t]))];
+        groups.forEach(group => {
+          const attributeSides = {};
+          node.attributes.forEach((_, i) => { attributeSides[i] = group[Math.min(group.length - 1, Math.floor(i * group.length / node.attributes.length))]; });
+          candidates.push({ side: group[0], attributeSides });
+        });
+      }
+      candidates.forEach(candidate => {
+        Object.assign(node, candidate);
+        const box = measuredBounds(node), width = box.right - box.left, height = box.bottom - box.top;
+        const used = new Set(attributeEntries(node.attributes).map(e => attributeSide(node, e.path)));
+        const conflicts = [...used].reduce((sum, side) => sum + (blocked[side] || 0), 0);
+        const lateral = [...used].filter(s => s === 'left' || s === 'right').length;
+        const rows = ['top', 'bottom'].reduce((sum, side) => sum + Math.floor(Math.max(0, node.attributes.filter((_, i) => attributeSide(node, i) === side).length - 1) / 7), 0);
+        const score = conflicts * 1e9 + width * height + height * height * .4 + rows * 60000 + lateral * 120000 + (used.size - 1) * 12000 + sides.indexOf(candidate.side);
+        if (score < bestScore) { bestScore = score; best = candidate; }
+      });
+      Object.assign(node, best);
+    }
+    let best, bestScore = Infinity;
+    const count = model.entities.length, root = Math.ceil(Math.sqrt(count));
+    const columnChoices = [...new Set([Math.max(1, root - 1), root, Math.min(count, root + 1), 1, ...(count <= 8 ? [count] : [])])];
+    columnChoices.forEach(columns => {
+      const positions = new Map();
+      let row = 0;
+      [...new Set(order.map(id => depths.get(id)))].forEach(depth => {
+        const level = order.filter(id => depths.get(id) === depth);
+        level.forEach((id, i) => positions.set(id, { x: i % columns, y: row + Math.floor(i / columns) }));
+        row += Math.ceil(level.length / columns);
+      });
+      let score = topologyScore(positions);
+      // ponytail: two bounded swap passes; use a graph-layout engine if large dense graphs need global optimization.
+      for (let pass = 0; pass < 2; pass++) for (let i = 0; i < count; i++) for (let j = i + 1; j < Math.min(count, count <= 16 ? count : i + 5); j++) {
+        const a = order[i], b = order[j];
+        if (depths.get(a) !== depths.get(b)) continue;
+        const pa = positions.get(a), pb = positions.get(b);
+        positions.set(a, pb); positions.set(b, pa);
+        const next = topologyScore(positions);
+        if (next < score) score = next;
+        else { positions.set(a, pa); positions.set(b, pb); }
+      }
+      model.entities.forEach(e => {
+        const p = positions.get(e.id), blocked = {};
+        links.filter(pair => pair.includes(e.id)).forEach(pair => {
+          const other = positions.get(pair.find(id => id !== e.id));
+          if (other.x !== p.x) blocked[other.x > p.x ? 'right' : 'left'] = 1;
+          if (other.y !== p.y) blocked[other.y > p.y ? 'bottom' : 'top'] = 1;
+        });
+        if (model.relationships.some(r => r.ends.every(end => end.entity === e.id))) blocked.right = 1;
+        arrangeAttributes(e, blocked);
+      });
+      model.relationships.forEach(r => {
+        const [a, b] = r.ends.map(end => positions.get(end.entity));
+        const blocked = a.x === b.x && a.y !== b.y ? { top: 1, bottom: 1 } : { left: 1, right: 1 };
+        arrangeAttributes(r, blocked);
+      });
+      // A shared center grid keeps aligned entities aligned despite different attribute fans.
+      const radius = (boxes, axis) => Math.max(0, ...boxes.flatMap(b => axis === 'x' ? [-b.left, b.right] : [-b.top, b.bottom]));
+      const spacing = axis => Math.max(260, 2 * (radius(model.entities.map(measuredBounds), axis) + radius(model.relationships.map(measuredBounds), axis) + 55));
+      let cellWidth = spacing('x'), cellHeight = spacing('y');
+      const lastColumn = Math.max(...[...positions.values()].map(p => p.x)), lastRow = row - 1;
+      // Very wide compound trees must not push centers beyond the saved coordinate range.
+      if (lastColumn * cellWidth > 90000 || lastRow * cellHeight > 90000) {
+        nodes.forEach(n => { n.side = 'top'; n.attributeSides = {}; });
+        cellWidth = spacing('x'); cellHeight = spacing('y'); score += 1000;
+      }
+      if (lastColumn * cellWidth > 90000 || lastRow * cellHeight > 90000) score += 1e12;
+      model.entities.forEach(e => { const p = positions.get(e.id); e.x = p.x * cellWidth; e.y = p.y * cellHeight; });
+      const boxes = model.entities.map(measuredBounds);
+      const width = Math.max(...boxes.map(b => b.right)) - Math.min(...boxes.map(b => b.left));
+      const height = Math.max(...boxes.map(b => b.bottom)) - Math.min(...boxes.map(b => b.top));
+      const lateral = nodes.filter(n => n.attributes.length && (n.side === 'left' || n.side === 'right')).length;
+      score += lateral * 15 + 12 * Math.abs(Math.log(width / height / 1.65)) + width * height / 1e6;
+      if (score < bestScore) { bestScore = score; best = nodes.map(n => ({ x: n.x, y: n.y, side: n.side, attributeSides: n.attributeSides })); }
+      nodes.forEach(n => { n.x = n.y = 0; });
     });
-    const occupied = model.entities.map(nodeBounds);
+    nodes.forEach((n, i) => Object.assign(n, best[i]));
+    const occupied = model.entities.map(measuredBounds);
     const groups = new Map();
     model.relationships.forEach(r => {
       const key = r.ends.map(e => e.entity).sort().join('|');
@@ -237,26 +342,31 @@
       groups.get(key).push(r);
     });
     groups.forEach(group => group.forEach((r, index) => {
-      const [a, b] = r.ends.map(end => model.entities.find(e => e.id === end.entity));
+      const [a, b] = r.ends.map(end => entities.get(end.entity));
+      const dx = b.x - a.x, dy = b.y - a.y, distance = Math.hypot(dx, dy) || 1;
+      const perpendicular = { x: -dy / distance, y: dx / distance };
       if (a.id === b.id) { r.x = a.x + 240; r.y = a.y + 130 + index * 140; }
       else {
-        const dx = b.x - a.x, dy = b.y - a.y, distance = Math.hypot(dx, dy) || 1;
-        const offset = (index - (group.length - 1) / 2) * 180;
+        const span = Math.max(...group.map(n => { const box = measuredBounds(n); return Math.abs(perpendicular.x) * (box.right - box.left) + Math.abs(perpendicular.y) * (box.bottom - box.top); })) + 70;
+        const offset = (index - (group.length - 1) / 2) * span;
         r.x = (a.x + b.x) / 2 - dy / distance * offset; r.y = (a.y + b.y) / 2 + dx / distance * offset;
       }
       const origin = { x: r.x, y: r.y };
       const fits = () => {
-        const box = nodeBounds(r);
+        const box = measuredBounds(r);
         return occupied.every(b => box.right + 55 <= b.left || box.left >= b.right + 55 || box.bottom + 55 <= b.top || box.top >= b.bottom + 55);
       };
       for (let ring = 1; !fits(); ring++) {
-        const candidates = [];
-        for (let x = -ring; x <= ring; x++) for (let y = -ring; y <= ring; y++) if (Math.max(Math.abs(x), Math.abs(y)) === ring) candidates.push({ x, y });
-        candidates.sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+        // Stay on the perpendicular bisector: both participants remain equally distant.
+        const candidates = a.id !== b.id ? [perpendicular, { x: -perpendicular.x, y: -perpendicular.y }].map(p => ({ x: p.x * ring, y: p.y * ring })) : [{ x: ring, y: 0 }, { x: 0, y: ring }];
         for (const p of candidates) { r.x = origin.x + p.x * 120; r.y = origin.y + p.y * 120; if (fits()) break; }
       }
-      occupied.push(nodeBounds(r));
+      occupied.push(measuredBounds(r));
     }));
+    const boxes = nodes.map(measuredBounds), left = Math.min(...boxes.map(b => b.left)), top = Math.min(...boxes.map(b => b.top));
+    const shiftX = Math.min(80 - left, 50000 - Math.max(...nodes.map(n => n.x)));
+    const shiftY = Math.min(80 - top, 50000 - Math.max(...nodes.map(n => n.y)));
+    nodes.forEach(n => { n.x += shiftX; n.y += shiftY; });
     return model;
   }
   function example(restructured = false) {

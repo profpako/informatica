@@ -380,7 +380,7 @@ function travel(redo) {
   draw(); persist(); boundsView(); notify(redo ? 'Operazione ripristinata.' : 'Operazione annullata.');
 }
 $('undo').addEventListener('click', () => travel(false)); $('redo').addEventListener('click', () => travel(true));
-$('auto-layout').addEventListener('click', () => { if (formCanClose()) { closeEditor(false); commit(ER.layout(ER.copy(shownModel())), true, stage === 'restructured'); notify('Disposizione riordinata. Puoi correggere le posizioni trascinando gli elementi.'); } });
+$('auto-layout').addEventListener('click', () => { if (formCanClose()) { closeEditor(false); commit(ER.layout(ER.copy(shownModel())), true, stage === 'restructured'); notify('Schema bilanciato, compresi i lati degli attributi. Puoi annullare o correggere le posizioni.'); } });
 $('fit').addEventListener('click', boundsView);
 function zoom(factor, point) {
   const rect = $('canvas').getBoundingClientRect();
