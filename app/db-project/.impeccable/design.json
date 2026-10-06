@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-06T16:25:07.383Z",
+  "title": "Design System: Trama · Editor ER",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "export-menu",
+        "value": "0 10px 32px #203d3015",
+        "purpose": "Menu di esportazione."
+      },
+      {
+        "name": "zoom-controls",
+        "value": "0 2px 8px #24473608",
+        "purpose": "Comandi zoom sovrapposti al canvas."
+      }
+    ],
+    "motion": [
+      {
+        "name": "control-feedback",
+        "value": "background .16s ease, color .16s ease",
+        "purpose": "Pulsanti e summary; disattivato con prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide",
+        "value": "1650px"
+      },
+      {
+        "name": "compact",
+        "value": "1100px"
+      },
+      {
+        "name": "stacked",
+        "value": "760px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Azione principale",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Applica, genera o esporta.",
+      "html": "<button class=\"ds-button ds-primary\">Applica allo schema</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 13px;border:0;border-radius:var(--radius,6px);font:600 13px/1.4 \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-button:focus-visible{outline:2px solid var(--accent,#23594f);outline-offset:3px}.ds-button:disabled{opacity:.35;cursor:default}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-primary{background:var(--accent,#23594f);color:var(--surface,#ffffff)}.ds-primary:hover{background:var(--accent-hover,#17463d)}"
+    },
+    {
+      "name": "Azione secondaria",
+      "kind": "button",
+      "refersTo": "button-subtle",
+      "description": "Comando discreto per il documento o la vista.",
+      "html": "<button class=\"ds-button ds-subtle\">Riordina</button>",
+      "css": ".ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 13px;border:0;border-radius:var(--radius,6px);font:600 13px/1.4 \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-button:focus-visible{outline:2px solid var(--accent,#23594f);outline-offset:3px}.ds-button:disabled{opacity:.35;cursor:default}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-subtle{background:transparent;color:var(--ink,#243c36)}.ds-subtle:hover{background:var(--accent-soft,#e9f0e9)}"
+    },
+    {
+      "name": "Campo",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Input nativo con etichetta e focus visibile.",
+      "html": "<label class=\"ds-label\" for=\"ds-node-name\">Nome</label><input class=\"ds-field\" id=\"ds-node-name\" value=\"Studente\">",
+      "css": ".ds-label{display:block;margin:20px 0 8px;font:600 12px \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;color:var(--ink,#243c36)}.ds-field{width:100%;padding:10px;border:1px solid #cad5cd;border-radius:var(--radius,6px);background:var(--surface,#ffffff);color:var(--ink,#243c36);font:13px \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;caret-color:var(--accent,#23594f)}.ds-field:focus{outline:2px solid var(--accent,#23594f);outline-offset:1px}"
+    },
+    {
+      "name": "Schede",
+      "kind": "nav",
+      "refersTo": "tabs",
+      "description": "Due modalità di input con stato attivo sottolineato.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\" aria-label=\"Modalità di inserimento\"><button class=\"ds-tab ds-active\" role=\"tab\" aria-selected=\"true\">Struttura</button><button class=\"ds-tab\" role=\"tab\" aria-selected=\"false\" tabindex=\"-1\">Da testo</button></div>",
+      "css": ".ds-tabs{display:flex;border-bottom:1px solid var(--line,#dce3dc)}.ds-tab{flex:1;padding:12px 8px;border:0;border-radius:0;border-bottom:2px solid transparent;margin-bottom:-1px;background:transparent;color:var(--muted,#62716b);font:13px \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-tab.ds-active{color:var(--accent,#23594f);font-weight:600;border-bottom-color:var(--accent,#23594f)}.ds-tab:hover{background:var(--paper,#f5f7f4)}.ds-tab:focus-visible{outline:2px solid var(--accent,#23594f);outline-offset:3px}@media(prefers-reduced-motion:reduce){.ds-tab{transition:none}}"
+    },
+    {
+      "name": "Riga dello schema",
+      "kind": "custom",
+      "refersTo": "schema-row",
+      "description": "Nome e dettaglio di un’entità nell’indice.",
+      "html": "<button class=\"ds-row\"><svg class=\"ds-row-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"6\" width=\"18\" height=\"12\" rx=\"1\"/></svg><span class=\"ds-description\"><span class=\"ds-name\">Studente</span><span class=\"ds-detail\">2 attributi · 1 identificatore</span></span></button>",
+      "css": ".ds-row{display:flex;align-items:center;gap:11px;width:100%;padding:12px 7px;border:0;border-radius:5px;background:transparent;color:var(--ink,#243c36);text-align:left;font-family:\"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-row:hover,.ds-row.ds-selected{background:var(--accent-soft,#e9f0e9)}.ds-row:focus-visible{outline:2px solid var(--accent,#23594f);outline-offset:3px}.ds-row-icon{width:20px;height:20px;fill:none;stroke:var(--accent,#23594f);stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.ds-description{min-width:0;flex:1}.ds-name{display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-detail{display:block;margin-top:4px;color:var(--muted,#62716b);font-size:11px}@media(prefers-reduced-motion:reduce){.ds-row{transition:none}}"
+    },
+    {
+      "name": "Entità ER",
+      "kind": "custom",
+      "description": "Rettangolo del diagramma con attributo identificatore.",
+      "html": "<svg viewBox=\"0 0 300 140\" width=\"300\" height=\"140\" role=\"group\" aria-label=\"Esempio di entità Studente\"><line class=\"ds-attribute-line\" x1=\"150\" y1=\"70\" x2=\"150\" y2=\"32\"/><circle class=\"ds-attribute-dot ds-key\" cx=\"150\" cy=\"32\" r=\"5\"/><text class=\"ds-attribute-label\" x=\"150\" y=\"18\" text-anchor=\"middle\">matricola</text><g class=\"ds-entity\" tabindex=\"0\" role=\"button\" aria-label=\"Modifica Studente\"><rect x=\"70\" y=\"70\" width=\"160\" height=\"50\" rx=\"2\"/><text x=\"150\" y=\"101\" text-anchor=\"middle\">Studente</text></g></svg>",
+      "css": ".ds-attribute-line{fill:none;stroke:#53666b;stroke-width:1.6}.ds-entity rect{fill:#fff;stroke:#23594f;stroke-width:2}.ds-entity text{font:600 20px \"Avenir Next\",Arial,sans-serif;fill:#203532}.ds-attribute-dot{fill:#fff;stroke:#364d48;stroke-width:1.6}.ds-key{fill:#203532}.ds-attribute-label{font:17px \"Avenir Next\",Arial,sans-serif;fill:#334642}.ds-entity{cursor:grab}.ds-entity:hover rect{stroke:#067e63;stroke-width:2.8}.ds-entity:focus rect{stroke:#067e63;stroke-width:3}.ds-entity:active{cursor:grabbing}"
+    },
+    {
+      "name": "Posizione degli attributi",
+      "kind": "input",
+      "refersTo": "selection-checkbox",
+      "description": "Checkbox, selezione totale e un solo menu del lato; anteprima prima di applicare.",
+      "html": "<fieldset class=\"ds-position\"><legend>Posizione degli attributi</legend><p class=\"ds-hint\">Seleziona gli attributi da spostare, poi scegli il lato. Un attributo composto include anche le sue componenti.</p><button class=\"ds-button ds-subtle\" type=\"button\">Seleziona tutti</button><div class=\"ds-checkbox-list\"><label><input type=\"checkbox\">indirizzo (composto)</label><label class=\"ds-child\"><input type=\"checkbox\">via</label></div><label class=\"ds-side-label\" for=\"ds-side\">Sposta la selezione</label><select class=\"ds-side\" id=\"ds-side\" disabled><option value=\"\">Scegli un lato…</option><option value=\"top\">Sopra</option><option value=\"bottom\">Sotto</option><option value=\"left\">A sinistra</option><option value=\"right\">A destra</option></select><p class=\"ds-hint\" role=\"status\">Seleziona almeno un attributo per scegliere il lato.</p></fieldset>",
+      "css": ".ds-checkbox-list{max-height:200px;overflow:auto;font:13px \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;color:var(--ink,#243c36)}.ds-checkbox-list label{display:flex;align-items:center;gap:10px;font-weight:400;margin:12px 0}.ds-checkbox-list .ds-child{padding-inline-start:12px}.ds-checkbox-list input{width:17px;height:17px;accent-color:var(--accent,#23594f);cursor:pointer}.ds-checkbox-list input:focus{outline:2px solid var(--accent,#23594f);outline-offset:1px}.ds-position{border:0;border-top:1px solid var(--line,#dce3dc);padding:15px 0 0;margin:25px 0 0;min-width:0;font-family:\"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;color:var(--ink,#243c36)}.ds-position legend{font-size:12px;font-weight:650;padding:0 8px 0 0}.ds-hint{font-size:12px;line-height:1.7;color:var(--muted,#62716b)}.ds-side-label{display:block;font-size:12px;font-weight:600;margin:20px 0 8px}.ds-side{border:1px solid #cad5cd;background:var(--surface,#ffffff);color:var(--ink,#243c36);padding:10px 25px 10px 10px;width:100%;border-radius:var(--radius,6px);font:13px \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;cursor:pointer}.ds-side:focus{outline:2px solid var(--accent,#23594f);outline-offset:1px}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 13px;border:0;border-radius:var(--radius,6px);font:600 13px/1.4 \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-button:focus-visible{outline:2px solid var(--accent,#23594f);outline-offset:3px}.ds-button:disabled{opacity:.35;cursor:default}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-subtle{background:transparent;color:var(--ink,#243c36)}.ds-subtle:hover{background:var(--accent-soft,#e9f0e9)}"
+    },
+    {
+      "name": "Fasi di progettazione",
+      "kind": "nav",
+      "refersTo": "stage-bar",
+      "description": "Select, stato e comandi della derivazione sotto la toolbar.",
+      "html": "<div class=\"ds-stage-bar\"><label class=\"ds-stage-label\" for=\"ds-stage\">Fase di progettazione</label><select id=\"ds-stage\"><option>ER iniziale</option><option>ER ristrutturato</option><option>Schema relazionale</option></select><span>Da generare</span><button class=\"ds-button ds-subtle\">Ristruttura</button><button class=\"ds-button ds-primary\">Genera relazionale</button></div>",
+      "css": ".ds-stage-bar{display:flex;align-items:center;gap:12px;padding:10px 24px;border-bottom:1px solid var(--line,#dce3dc);background:var(--surface,#ffffff);font-family:\"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;color:var(--ink,#243c36)}.ds-stage-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.ds-stage-bar select{width:185px;padding:10px 25px 10px 10px;border:1px solid #cad5cd;border-radius:var(--radius,6px);background:var(--surface,#ffffff);color:var(--ink,#243c36);font:13px \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;cursor:pointer}.ds-stage-bar select:focus{outline:2px solid var(--accent,#23594f);outline-offset:1px}.ds-stage-bar>span{font-size:12px;color:var(--muted,#62716b);flex:1}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 13px;border:0;border-radius:var(--radius,6px);font:600 13px/1.4 \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-button:focus-visible{outline:2px solid var(--accent,#23594f);outline-offset:3px}.ds-button:disabled{opacity:.35;cursor:default}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-primary{background:var(--accent,#23594f);color:var(--surface,#ffffff)}.ds-primary:hover{background:var(--accent-hover,#17463d)}.ds-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 13px;border:0;border-radius:var(--radius,6px);font:600 13px/1.4 \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;cursor:pointer;transition:background .16s ease,color .16s ease}.ds-button:focus-visible{outline:2px solid var(--accent,#23594f);outline-offset:3px}.ds-button:disabled{opacity:.35;cursor:default}@media(prefers-reduced-motion:reduce){.ds-button{transition:none}}.ds-subtle{background:transparent;color:var(--ink,#243c36)}.ds-subtle:hover{background:var(--accent-soft,#e9f0e9)}@media(max-width:760px){.ds-stage-bar{padding:8px 12px;gap:7px;flex-wrap:wrap}.ds-stage-bar select{width:155px;font-size:12px}.ds-stage-bar>span{font-size:11px}.ds-stage-bar .ds-button{font-size:12px;padding:8px;white-space:normal;min-height:35px}}"
+    },
+    {
+      "name": "Relazionale compatto",
+      "kind": "custom",
+      "refersTo": "compact-schema",
+      "description": "Notazione del PDF: gruppo PK con una linea continua, FK doppia e asterisco per opzionali.",
+      "html": "<div class=\"ds-compact\"><p class=\"ds-relation\"><strong>POST</strong>(<span class=\"ds-key ds-pk\"><span class=\"ds-column\">id<span class=\"ds-sr-only\"> [PK]</span></span></span>, testo*, <span class=\"ds-column ds-fk\">utente_id<span class=\"ds-sr-only\"> [FK]</span></span>)</p><p class=\"ds-relation\"><strong>segue</strong>(<span class=\"ds-key ds-pk\"><span class=\"ds-column\">follower_id<span class=\"ds-sr-only\"> [PK, FK]</span></span>, <span class=\"ds-column\">seguito_da_id<span class=\"ds-sr-only\"> [PK, FK]</span></span></span>)</p></div><details class=\"ds-references\"><summary>Riferimenti delle FK e vincoli UNIQUE</summary><p><strong>FK:</strong> utente_id → UTENTE(id)</p><p><strong>FK:</strong> follower_id → UTENTE(id)</p><p><strong>FK:</strong> seguito_da_id → UTENTE(id)</p></details>",
+      "css": ".ds-compact{background:var(--surface,#ffffff);border:1px solid var(--line,#dce3dc);padding:18px 22px;margin:20px 0;color:var(--ink,#243c36)}.ds-relation{font:14px/2.4 \"SFMono-Regular\",Consolas,monospace;margin:0 0 14px;overflow-wrap:anywhere;break-inside:avoid}.ds-relation:last-child{margin-bottom:0}.ds-column{display:inline-block;max-width:100%;line-height:1.8;vertical-align:baseline}.ds-key .ds-column{display:inline}.ds-pk{text-decoration:underline solid var(--ink,#243c36);text-decoration-thickness:1.4px;text-underline-offset:3px;text-decoration-skip-ink:none}.ds-fk{text-decoration:underline double #245d85;text-decoration-thickness:1.4px;text-underline-offset:3px;text-decoration-skip-ink:none}.ds-references{font:13px/1.8 \"Avenir Next\",Avenir,\"Segoe UI\",sans-serif;color:var(--ink,#243c36);overflow-wrap:anywhere}.ds-references summary{cursor:pointer;font-weight:600}.ds-references summary:focus-visible{outline:2px solid var(--accent,#23594f);outline-offset:3px}.ds-references p{margin:8px 0}.ds-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}@media(max-width:760px){.ds-compact{padding:14px}.ds-relation{font-size:13px}}@media print{.ds-compact{border:0;padding:0}.ds-relation{font-size:12px}.ds-fk{print-color-adjust:exact}}"
+    },
+    {
+      "name": "Gerarchia ISA",
+      "kind": "custom",
+      "description": "Freccia vuota rivolta al padre con copertura e appartenenza testuali.",
+      "html": "<svg viewBox=\"0 0 400 165\" width=\"400\" height=\"165\" role=\"group\" aria-label=\"Esempio di gerarchia\"><rect class=\"ds-isa-parent\" x=\"25\" y=\"8\" width=\"130\" height=\"50\" rx=\"2\"/><text class=\"ds-isa-name\" x=\"90\" y=\"39\" text-anchor=\"middle\">Persona</text><g class=\"ds-hierarchy\" tabindex=\"0\" role=\"button\" aria-label=\"Modifica gerarchia di Persona\"><path class=\"ds-isa-line\" d=\"M90 58V140H20M90 140H200\"/><polygon class=\"ds-isa-arrow\" points=\"90,61 81,77 99,77\"/><text class=\"ds-isa-role\" x=\"108\" y=\"128\">totale · esclusiva</text></g></svg>",
+      "css": ".ds-isa-parent{fill:#fff;stroke:#23594f;stroke-width:2}.ds-isa-name{font:600 20px \"Avenir Next\",Arial,sans-serif;fill:#203532}.ds-isa-line{fill:none;stroke:#53666b;stroke-width:1.6;stroke-linejoin:round}.ds-isa-arrow{fill:#fff;stroke:#53666b;stroke-width:1.6}.ds-isa-role{font:italic 15px \"Avenir Next\",Arial,sans-serif;fill:#4a605a;paint-order:stroke;stroke:#fff;stroke-width:5px}.ds-hierarchy:focus .ds-isa-arrow,.ds-hierarchy:hover .ds-isa-arrow{stroke:var(--accent,#23594f);stroke-width:3}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Foglio di progettazione",
+    "overview": "Un editor didattico con carta appena tinta, inchiostro verde scuro e controlli web familiari. L’interfaccia lascia spazio al disegno e mantiene gli input leggibili, senza composizioni promozionali. La notazione del PDF indicato in PRODUCT.md vincola le forme dello schema.",
+    "keyCharacteristics": [
+      "Superfici chiare, bordi sottili e azioni verdi.",
+      "Un carattere sans per l’interfaccia; monospace per sintassi e dati testuali.",
+      "Modifica guidata e disegno SVG con trascinamento diretto."
+    ],
+    "rules": [
+      {
+        "name": "The FK Rule",
+        "body": "Le FK hanno doppia sottolineatura blu. Una PK composta ha una sola sottolineatura continua sull’intero gruppo, virgole comprese, anche quando i componenti sono FK. Una PK di una sola colonna che è anche FK usa la doppia sottolineatura della FK.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "**Do** preservare le forme e le cardinalità della notazione didattica.",
+      "**Do** mantenere focus visibile, etichette dei campi e nomi accessibili delle icone.",
+      "**Do** usare il verde per azioni e selezione, e bordi sottili per separare le superfici."
+    ],
+    "donts": [
+      "**Don't** aggiungere caratteri display o decorazioni promozionali all’editor.",
+      "**Don't** sostituire i simboli ER con card generiche.",
+      "**Don't** introdurre animazioni di ingresso o movimento indispensabile alla comprensione."
+    ]
+  }
+}

@@ -1,0 +1,43 @@
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const ER = require('../model.js');
+require('../restructure.js'); require('../relational.js');
+
+test('schema relazionale: PK, FK composte, 1:N, N:M, 1:1, ricorsione e minimi residui', () => {
+  const source = ER.parse(`ENTITA: Utente\n- prefisso [PK]\n- numero [PK]\n- nome\n- telefoni [1,N]\nENTITA: Post\n- id [PK]\n- testo\nASSOCIAZIONE: pubblica: Utente [0,N] -> Post [1,1]\nASSOCIAZIONE: segue: Utente (follower) [0,N] -> Utente (seguito) [0,N]`);
+  const result = ER.relational(ER.restructure(source).model);
+  const utente = result.tables.find(t => t.name === 'Utente'), post = result.tables.find(t => t.name === 'Post'), segue = result.tables.find(t => t.name === 'segue'), telefoni = result.tables.find(t => t.name === 'Utente_telefoni');
+  assert.deepEqual(utente.primaryKey, ['prefisso', 'numero']);
+  assert.equal(post.foreignKeys.length, 1); assert.deepEqual(post.foreignKeys[0].references, utente.primaryKey);
+  assert.ok(post.columns.filter(c => post.foreignKeys[0].columns.includes(c.name)).every(c => !c.nullable));
+  assert.equal(segue.foreignKeys.length, 2); assert.equal(segue.primaryKey.length, 4);
+  assert.notDeepEqual(segue.foreignKeys[0].columns, segue.foreignKeys[1].columns);
+  const notation = ER.relationalNotation(segue);
+  assert.equal((notation.match(/class="relational-key relational-pk"/g) || []).length, 1, 'Composite PK is one underlined group');
+  assert.doesNotMatch(notation, /relational-fk/, 'FK components of the composite PK retain its single underline');
+  assert.equal((notation.match(/\[PK, FK\]/g) || []).length, 4, 'Each component still has its FK semantics');
+  assert.match(ER.relationalNotation(post), /class="relational-column relational-fk"/, 'Other FK columns receive double underlining');
+  assert.equal(telefoni.primaryKey.length, 3); assert.equal(telefoni.foreignKeys.length, 1);
+  assert.ok(result.constraints.some(c => c.includes('ha_telefoni') && c.includes('almeno un')));
+  assert.match(ER.relationalText(result), /FK: .* -> Utente\(prefisso, numero\)/);
+  const one = ER.relational(ER.parse('ENTITA: A\n- id [ID]\nENTITA: B\n- id [ID]\nASSOCIAZIONE: abbina: A [0,1] -> B [1,1]'));
+  assert.equal(one.tables.find(t => t.name === 'B').foreignKeys.length, 1);
+  assert.equal(one.tables.find(t => t.name === 'B').unique.length, 1);
+  assert.equal(one.tables.find(t => t.name === 'A').foreignKeys.length, 0);
+  const optional = ER.relational(ER.parse('ENTITA: A\n- id [ID]\nENTITA: B\n- id [ID]\nASSOCIAZIONE: usa: A [0,N] -> B [0,1]\n- data'));
+  const b = optional.tables.find(t => t.name === 'B'); assert.ok(b.columns.find(c => c.name === 'usa_data').nullable);
+  assert.ok(optional.constraints.some(c => c.includes('FK è nulla')));
+  const hierarchy = ER.parse('ENTITA: Persona\n- id [PK]\nENTITA: Studente\n- matricola\nGERARCHIA: Persona [PARZIALE, ESCLUSIVA, SEPARATE] -> Studente');
+  const isa = ER.relational(ER.restructure(hierarchy).model), student = isa.tables.find(t => t.name === 'Studente');
+  assert.deepEqual(student.primaryKey, student.foreignKeys[0].columns);
+  assert.match(ER.relationalNotation(student), /class="relational-key relational-pk relational-fk"/, 'A single-column PK that is a FK retains the FK notation');
+  for (const t of result.tables) t.foreignKeys.forEach(f => {
+    const owner = result.tables.find(o => o.id === f.target);
+    assert.deepEqual(f.references, owner.primaryKey);
+    assert.equal(f.columns.length, f.references.length);
+    assert.ok(f.columns.every(c => t.columns.some(col => col.name === c)));
+  });
+  assert.throws(() => ER.relational(source), /ristrutturato/);
+  assert.throws(() => ER.relational(ER.parse('ENTITA: SenzaChiave')), /identificatore/);
+});

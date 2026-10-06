@@ -1,0 +1,55 @@
+'use strict';
+// Run against npm start: node tests/editor.browser.cjs /path/to/playwright
+const { chromium } = require(process.argv[2] || 'playwright');
+const assert = require('node:assert/strict');
+(async () => {
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.on('dialog', dialog => dialog.accept());
+  try {
+    await page.goto(process.argv[3] || 'http://127.0.0.1:4173');
+    await page.locator('#structure-list [data-edit]').first().click();
+    assert.equal(await page.locator('#attribute-side').count(), 0, 'Only one side control');
+    assert.equal(await page.locator('#attribute-target-side').isDisabled(), true);
+    const saved = () => page.evaluate(() => localStorage.getItem('trama-er-v1'));
+    const before = await saved(), beforeDiagram = await page.locator('#diagram-content').innerHTML();
+    await page.locator('#attribute-selection input[value="0"]').check();
+    await page.locator('#attribute-target-side').selectOption('left');
+    assert.notEqual(await page.locator('#diagram-content').innerHTML(), beforeDiagram, 'Preview visible before Apply');
+    assert.equal(await saved(), before, 'Preview must not save changes');
+    await page.locator('#attribute-selection input[value="0"]').uncheck();
+    assert.match(await page.locator('#attribute-move-status').textContent(), /Anteprima visibile.*Applica allo schema.*Seleziona almeno/, 'Deselection must retain the pending-Apply reminder');
+    assert.equal(await page.locator('#attribute-target-side').isDisabled(), true);
+    await page.locator('#attribute-selection input[value="1"]').check();
+    assert.match(await page.locator('#attribute-move-status').textContent(), /Anteprima visibile.*Applica allo schema.*1 attributo selezionato/, 'New selection must retain the pending-Apply reminder');
+    await page.locator('#form-back').click();
+    assert.equal(await page.locator('#diagram-content').innerHTML(), beforeDiagram, 'Discard restores original diagram');
+    assert.equal(await saved(), before);
+    await page.locator('#structure-list [data-edit]').first().click();
+    await page.locator('#attribute-selection input[value="0"]').check();
+    await page.locator('#attribute-selection input[value="1"]').check();
+    await page.locator('#attribute-target-side').selectOption('right');
+    await page.getByRole('button', { name: 'Applica allo schema' }).click();
+    const group = JSON.parse(await saved()).model.entities[0];
+    assert.equal(group.attributeSides['0'], 'right'); assert.equal(group.attributeSides['1'], 'right');
+    await page.locator('#structure-list [data-edit]').first().click();
+    await page.locator('#select-all-attributes').click();
+    assert.equal(await page.locator('#select-all-attributes').textContent(), 'Deseleziona tutti');
+    await page.locator('#select-all-attributes').click();
+    assert.equal(await page.locator('#attribute-target-side').isDisabled(), true);
+    await page.locator('#select-all-attributes').click();
+    await page.locator('#attribute-target-side').selectOption('bottom');
+    await page.locator('#structure-panel').evaluate(e => e.scrollTop = e.scrollHeight);
+    await page.locator('#toast').waitFor({ state: 'hidden' });
+    await page.screenshot({ path: '.impeccable/review/attribute-unified-desktop.png' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.locator('#fit').click();
+    await page.screenshot({ path: '.impeccable/review/attribute-unified-mobile.png', fullPage: true });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.getByRole('button', { name: 'Applica allo schema' }).click();
+    const all = JSON.parse(await saved()).model.entities[0];
+    assert.equal(all.side, 'bottom'); assert.deepEqual(all.attributeSides, {}); assert.deepEqual(all.attributePositions, {});
+    await page.reload(); assert.equal(JSON.parse(await saved()).model.entities[0].side, 'bottom');
+    console.log('PASS: unified selection, single/group/all, preview, discard, save, persistence, mobile');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });
