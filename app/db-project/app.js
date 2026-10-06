@@ -6,6 +6,7 @@ const history = [], future = [];
 let model = ER.example(), selected = '', editing = null, formDirty = false, textDirty = false;
 let derived = null, stage = 'initial';
 let relationalView = 'compact';
+let physicalTableId = '';
 let view = { x: 0, y: 0, w: 1000, h: 700 }, drag = null, toastTimer, storageAvailable = true;
 let draftText = '', firstResize = true, lastCanvasSize = { w: 0, h: 0 };
 try {
@@ -14,7 +15,7 @@ try {
     const record = JSON.parse(stored);
     model = ER.validate(record.model);
     derived = readDerived(record.derived);
-    stage = record.stage === 'relational' && derived?.relational ? 'relational' : record.stage === 'restructured' && derived ? 'restructured' : 'initial';
+    stage = record.stage === 'lab' ? 'lab' : record.stage === 'physical' && derived?.physical ? 'physical' : record.stage === 'relational' && derived?.relational ? 'relational' : record.stage === 'restructured' && derived ? 'restructured' : 'initial';
     relationalView = record.relationalView === 'tables' ? 'tables' : 'compact';
     draftText = typeof record.draft === 'string' && record.draft.length <= 1000000 ? record.draft : '';
     textDirty = !!draftText && draftText !== ER.serialize(model);
@@ -30,8 +31,12 @@ $('schema-text').value = draftText || ER.serialize(model);
 function readDerived(raw) {
   if (!raw) return null;
   if (typeof raw.signature !== 'string' || raw.signature.length > 1000000 || !Array.isArray(raw.report) || raw.report.length > 1000 || raw.report.some(s => typeof s !== 'string' || s.length > 2000)) throw Error('La ristrutturazione salvata non è valida.');
-  const loaded = { model: ER.validate(raw.model), signature: raw.signature, report: [...raw.report] };
-  if (raw.relational) loaded.relational = ER.relational(loaded.model);
+  const updated = ER.upgradeMultivalues(raw);
+  const loaded = { model: updated.model, signature: raw.signature, report: updated.report };
+  if (raw.relational || raw.physical) loaded.relational = ER.relational(loaded.model);
+  if (raw.physical) {
+    loaded.physical = ER.restorePhysical(raw.physical, raw.relational || loaded.relational, loaded.relational, updated.renames);
+  }
   return loaded;
 }
 const shownModel = () => stage !== 'initial' && derived ? derived.model : model;
@@ -43,6 +48,7 @@ function diagramModel() {
   return preview;
 }
 const snapshot = () => ER.copy({ model, derived, stage });
+const diagramStage = () => stage === 'initial' || stage === 'restructured';
 function remember() { history.push(snapshot()); if (history.length > 60) history.shift(); future.length = 0; }
 
 function notify(message) {
@@ -59,7 +65,7 @@ function persist() {
   $('save-status').classList.toggle('warning', !storageAvailable);
 }
 function boundsView() {
-  if (stage === 'relational') return;
+  if (!diagramStage()) return;
   const b = ER.render(diagramModel()).bounds, rect = $('canvas').getBoundingClientRect();
   const scale = Math.max(b.w / Math.max(1, rect.width - 60), b.h / Math.max(1, rect.height - 75));
   view = { x: b.x + b.w / 2 - rect.width * scale / 2, y: b.y + b.h / 2 - rect.height * scale / 2, w: rect.width * scale, h: rect.height * scale };
@@ -79,26 +85,33 @@ function draw() {
   $('diagram-title').textContent = model.title + (stage === 'initial' ? ' · ER iniziale' : ' · ER ristrutturato');
   $('project-title').value = model.title;
   document.title = `${model.title} · Trama ER`;
-  $('empty-state').hidden = !!model.entities.length;
+  $('empty-state').hidden = !diagramStage() || !!model.entities.length;
   $('canvas-instruction').hidden = !model.entities.length;
   $('schema-counts').textContent = `${active.entities.length} entità · ${active.relationships.length} associazioni${active.hierarchies?.length ? ` · ${active.hierarchies.length} gerarchie` : ''}`;
-  document.querySelector('.canvas-title span:nth-child(2)').textContent = stage === 'relational' ? 'Schema relazionale' : 'Schema concettuale';
-  document.querySelector('.notation').hidden = stage === 'relational'; document.querySelector('.legend').hidden = stage === 'relational';
-  document.querySelector('.drawing-area').setAttribute('aria-label', stage === 'relational' ? 'Schema relazionale' : 'Schema ER');
+  document.querySelector('.canvas-title span:nth-child(2)').textContent = stage === 'lab' ? 'Laboratorio delle query' : stage === 'physical' ? 'Schema fisico MySQL' : stage === 'relational' ? 'Schema relazionale' : 'Schema concettuale';
+  document.querySelector('.notation').hidden = !diagramStage(); document.querySelector('.legend').hidden = !diagramStage();
+  document.querySelector('.drawing-area').setAttribute('aria-label', stage === 'physical' ? 'Schema fisico MySQL' : stage === 'relational' ? 'Schema relazionale' : 'Schema ER');
   if (stage === 'relational') $('schema-counts').textContent = `${derived.relational.tables.length} relazioni`;
+  if (stage === 'physical') $('schema-counts').textContent = `${derived.physical.tables.length} tabelle · MySQL`;
   $('auto-layout').disabled = !active.entities.length;
-  $('diagram').toggleAttribute('hidden', stage === 'relational'); $('relational-panel').hidden = stage !== 'relational';
+  $('diagram').toggleAttribute('hidden', !diagramStage()); $('relational-panel').hidden = stage !== 'relational'; $('physical-panel').hidden = stage !== 'physical';
+  $('lab-panel').hidden = stage !== 'lab';
+  if (stage === 'lab') { $('schema-counts').textContent = 'MySQL locale · AI locale'; lab.activate(); }
   $('canvas-instruction').hidden = stage !== 'initial' || !active.entities.length;
-  document.querySelector('.zoom-controls').hidden = stage === 'relational';
-  $('auto-layout').disabled = stage === 'relational' || !active.entities.length; $('fit').disabled = stage === 'relational';
+  document.querySelector('.zoom-controls').hidden = !diagramStage();
+  $('auto-layout').disabled = !diagramStage() || !active.entities.length; $('fit').disabled = !diagramStage();
   $('relational-generate').disabled = !model.entities.length;
+  $('physical-generate').disabled = !model.entities.length;
   if (stage === 'relational') renderRelational();
+  if (stage === 'physical') renderPhysical();
   $('restructure').disabled = !model.entities.length;
   $('schema-stage').value = stage;
   $('schema-stage').querySelector('[value="restructured"]').disabled = !derived;
   $('schema-stage').querySelector('[value="relational"]').disabled = !derived?.relational;
-  document.querySelectorAll('[data-export="svg"],[data-export="png"]').forEach(b => { b.disabled = stage === 'relational'; });
+  $('schema-stage').querySelector('[value="physical"]').disabled = !derived?.physical;
+  document.querySelectorAll('[data-export="svg"],[data-export="png"]').forEach(b => { b.disabled = !diagramStage(); });
   document.querySelector('[data-export="relational"]').disabled = !derived?.relational;
+  document.querySelector('[data-export="sql"]').disabled = !derived?.physical;
   const stale = derived && derived.signature !== ER.serialize(model);
   $('derived-status').textContent = derived ? stale ? 'Da rigenerare' : 'Ristrutturazione aggiornata' : 'Da generare';
   $('derived-status').classList.toggle('warning', !!stale);
@@ -129,9 +142,10 @@ function formCanClose() {
 }
 function closeEditor(check = true) {
   if (check && !formCanClose()) return false;
-  const preview = editing?.preview;
+  const preview = editing?.preview, physicalDraft = stage === 'physical' && formDirty;
   editing = null; formDirty = false; $('node-form').hidden = true; $('hierarchy-form').hidden = true; $('structure-list').hidden = false;
   if (preview) draw();
+  else if (physicalDraft) renderPhysical();
   return true;
 }
 function tab(mode, check = true) {
@@ -312,7 +326,9 @@ $('schema-stage').addEventListener('change', () => {
 $('restructure').addEventListener('click', () => {
   if (!closeEditor()) return;
   try {
-    const result = ER.restructure(model); remember(); derived = { ...result, signature: ER.serialize(model) }; stage = 'restructured'; selected = ''; draw(); boundsView(); persist();
+    const result = ER.restructure(model);
+    if (!canReplacePhysical()) return;
+    remember(); derived = { ...result, signature: ER.serialize(model) }; stage = 'restructured'; selected = ''; draw(); boundsView(); persist();
     notify('ER ristrutturato generato. Lo schema iniziale è conservato.');
   } catch (error) { notify(`Ristrutturazione non riuscita: ${error.message}`); }
 });
@@ -331,10 +347,86 @@ $('relational-panel').addEventListener('change', event => {
 $('relational-generate').addEventListener('click', () => {
   if (!closeEditor()) return;
   try {
-    const signature = ER.serialize(model), candidate = !derived || derived.signature !== signature ? { ...ER.restructure(model), signature } : ER.copy(derived);
-    candidate.relational = ER.relational(candidate.model);
+    const candidate = relationalCandidate();
+    if (!canReplacePhysical(candidate)) return;
     remember(); derived = candidate; stage = 'relational'; selected = ''; draw(); persist(); notify('Schema relazionale generato con PK, FK e vincoli residui.');
   } catch (error) { notify(`Traduzione non riuscita: ${error.message}`); }
+});
+function relationalCandidate() {
+  const signature = ER.serialize(model), candidate = !derived || derived.signature !== signature ? { ...ER.restructure(model), signature } : ER.copy(derived);
+  candidate.relational = ER.relational(candidate.model);
+  return candidate;
+}
+function canReplacePhysical(candidate = {}) {
+  return !derived?.physical || candidate.physical || confirm('La rigenerazione sostituirà le personalizzazioni SQL di tipi, opzioni e CHECK. Vuoi continuare? Puoi recuperarle con Annulla.');
+}
+$('physical-generate').addEventListener('click', () => {
+  if (!closeEditor()) return;
+  try {
+    const candidate = relationalCandidate();
+    if (!canReplacePhysical(candidate)) return;
+    candidate.physical ||= ER.physical(candidate.relational);
+    remember(); derived = candidate; stage = 'physical'; selected = ''; draw(); persist();
+    notify('Proposta MySQL generata. Modifica tipi, opzioni e CHECK, poi applica le scelte.');
+  } catch (error) { notify(`Generazione SQL non riuscita: ${error.message}`); }
+});
+function renderPhysical() {
+  const result = derived.physical;
+  const table = result.tables.find(t => t.id === physicalTableId) || result.tables[0]; physicalTableId = table.id;
+  const checked = value => value ? ' checked' : '', disabled = value => value ? ' disabled' : '';
+  const checkbox = (i, option, label, value, locked = false) => `<label><input type="checkbox" data-column="${i}" data-option="${option}"${checked(value)}${disabled(locked)}> ${label}</label>`;
+  const columns = table.columns.map((c, i) => {
+    const pk = table.primaryKey.includes(c.name), source = ER.physicalTypeSource(result, table, c), fk = source !== c;
+    const owner = fk ? result.tables.find(t => t.columns.includes(source)) : null;
+    const unique = table.primaryKey.length === 1 && pk || table.unique.some(u => u.length === 1 && u[0] === c.name);
+    return `<fieldset class="physical-column"><legend>${ER.escape(c.name)} <span class="physical-key">${[pk ? 'PK' : '', fk ? 'FK' : ''].filter(Boolean).join(' · ')}</span></legend><div class="physical-column-fields"><div><label for="sql-type-${i}">Tipo MySQL</label><input id="sql-type-${i}" data-column="${i}" data-option="type" list="mysql-types" value="${ER.escape(c.type)}" maxlength="1000"${disabled(fk)}>${fk ? `<p class="field-hint">Tipo da ${ER.escape(owner.name)}.${ER.escape(source.name)}.</p>` : ''}</div><div><label for="sql-default-${i}">DEFAULT <span>(facoltativo)</span></label><input id="sql-default-${i}" data-column="${i}" data-option="default" value="${ER.escape(c.default)}" maxlength="1000" placeholder="1, 'testo', CURRENT_TIMESTAMP"></div><div class="physical-options">${checkbox(i, 'unsigned', 'UNSIGNED', c.unsigned, fk)}${checkbox(i, 'nullable', 'NULL ammesso', c.nullable, pk)}${checkbox(i, 'autoIncrement', 'AUTO_INCREMENT', c.autoIncrement, fk || table.primaryKey[0] !== c.name)}${checkbox(i, 'unique', 'UNIQUE', c.unique || unique, unique)}</div></div></fieldset>`;
+  }).join('');
+  const fkFields = table.foreignKeys.map((f, i) => {
+    const owner = result.tables.find(t => t.id === f.target);
+    const select = (option, label) => `<div><label for="sql-${option}-${i}">${label}</label><select id="sql-${option}-${i}" data-fk="${i}" data-option="${option}">${ER.physicalActions.map(a => `<option value="${a}"${a === f[option] ? ' selected' : ''}>${a || 'Non specificare'}</option>`).join('')}</select></div>`;
+    return `<fieldset class="physical-fk"><legend>${ER.escape(f.columns.join(' + '))} → ${ER.escape(owner.name)}(${ER.escape(f.references.join(', '))})</legend><div class="field-pair">${select('onDelete', 'ON DELETE')}${select('onUpdate', 'ON UPDATE')}</div></fieldset>`;
+  }).join('');
+  const sql = ER.physicalSQL(result, derived.relational);
+  $('physical-panel').innerHTML = `<h2>Schema fisico · MySQL</h2><p>Tipi proposti secondo le convenzioni dell’esercizio TikTok. Scegli una tabella e adatta la proposta. Le modifiche si salvano con <strong>Applica scelte SQL</strong>.</p><form id="physical-form"><div class="physical-database"><div><label for="physical-database">Nome del database</label><input id="physical-database" value="${ER.escape(result.database)}" maxlength="64" required><button class="button primary" type="submit" style="margin-top:12px">Applica scelte SQL</button></div><div class="physical-options"><label><input id="physical-create-database" type="checkbox"${checked(result.createDatabase)}> CREATE DATABASE</label><label><input id="physical-if-not-exists" type="checkbox"${checked(result.ifNotExists)}> IF NOT EXISTS</label><label><input id="physical-include-engine" type="checkbox"${checked(result.includeEngine)}> ENGINE=InnoDB</label><label><input id="physical-include-charset" type="checkbox"${checked(result.includeCharset)}> DEFAULT CHARSET=utf8mb4</label></div></div><p id="physical-error" class="error" role="alert" hidden></p><p id="physical-draft-status" class="field-hint" role="status">Le scelte mostrate sono applicate.</p><p class="field-hint">ENGINE e CHARSET sono facoltativi e valgono per tutte le tabelle. Senza queste clausole si usano il motore predefinito del server e il charset del database. La spunta CHARSET specifica utf8mb4 anche in CREATE DATABASE.</p><div class="physical-table-control"><div><label for="physical-table">Tabella da modificare</label><select id="physical-table">${result.tables.map(t => `<option value="${t.id}"${t.id === table.id ? ' selected' : ''}>${ER.escape(t.name)}</option>`).join('')}</select></div><div><label for="physical-table-name">Nome SQL della tabella</label><input id="physical-table-name" value="${ER.escape(table.name)}" maxlength="64" required></div></div><datalist id="mysql-types">${ER.physicalTypePresets.map(type => `<option value="${type}"></option>`).join('')}</datalist><section aria-label="Colonne di ${ER.escape(table.name)}">${columns}</section>${fkFields ? `<h3>Integrità referenziale</h3><details class="physical-fk-help"><summary>Come scegliere ON DELETE e ON UPDATE</summary><p>Le azioni riguardano le righe che fanno riferimento alla tabella collegata: ON DELETE quando elimini la riga referenziata, ON UPDATE quando cambi la sua chiave.</p><dl><dt>Non specificare</dt><dd>Omette la clausola SQL. Il comportamento predefinito è NO ACTION, equivalente a RESTRICT con InnoDB.</dd><dt>RESTRICT</dt><dd>Blocca eliminazione o modifica della chiave se esistono righe che la referenziano.</dd><dt>CASCADE</dt><dd>ON DELETE elimina anche le righe collegate; ON UPDATE aggiorna le loro FK con il nuovo valore della chiave.</dd><dt>SET NULL</dt><dd>Conserva le righe collegate e mette a NULL le loro FK. Tutte le colonne della FK devono ammettere NULL.</dd><dt>NO ACTION</dt><dd>Con InnoDB blocca subito l’operazione come RESTRICT: non significa ignorare la FK.</dd></dl><p><a href="https://dev.mysql.com/doc/refman/8.4/en/create-table-foreign-keys.html" target="_blank" rel="noopener">Documentazione MySQL sulle azioni referenziali</a></p></details>${fkFields}` : ''}<label for="physical-checks">Vincoli CHECK della tabella</label><textarea id="physical-checks" rows="4" spellcheck="false" placeholder="prezzo &gt;= 0&#10;foto IS NOT NULL OR video IS NOT NULL">${ER.escape(table.checks.join('\n'))}</textarea><p class="field-hint">Una condizione per riga, senza punto e virgola. Puoi riferirti a più colonne della stessa tabella. <a href="https://dev.mysql.com/doc/refman/8.4/en/create-table-check-constraints.html" target="_blank" rel="noopener">Regole CHECK di MySQL</a>.</p><button class="button primary" type="submit">Applica scelte SQL</button></form><section class="physical-preview"><div class="physical-preview-heading"><h3>SQL applicato</h3><div><button class="button subtle" type="button" data-sql-action="copy">Copia SQL</button><button class="button primary" type="button" data-sql-action="download">Esporta SQL</button></div></div><p class="field-hint">MySQL 8.0.16 o successivo. La proposta conserva PK, FK e UNIQUE del relazionale. Le espressioni CHECK vengono verificate da MySQL quando esegui lo script.</p><textarea id="physical-sql" readonly spellcheck="false" rows="18" aria-label="Script SQL MySQL applicato">${ER.escape(sql)}</textarea><pre class="physical-print">${ER.escape(sql)}</pre></section>${derived.relational.constraints.length ? `<section class="relation-constraints"><h3>Vincoli residui</h3><p>Le regole che richiedono altre righe o tabelle restano da gestire con controlli applicativi o trigger.</p><ul>${derived.relational.constraints.map(c => `<li>${ER.escape(c)}</li>`).join('')}</ul></section>` : ''}`;
+}
+$('physical-panel').addEventListener('input', event => {
+  if (!event.target.closest('#physical-form') || event.target.id === 'physical-table') return;
+  formDirty = true; $('physical-error').hidden = true;
+  $('physical-draft-status').textContent = 'Modifiche in bozza: premi Applica scelte SQL per aggiornare lo script e salvarle.';
+});
+$('physical-panel').addEventListener('change', event => {
+  if (event.target.id !== 'physical-table') return;
+  if (!formCanClose()) { event.target.value = physicalTableId; return; }
+  physicalTableId = event.target.value; formDirty = false; renderPhysical();
+});
+$('physical-panel').addEventListener('submit', event => {
+  if (event.target.id !== 'physical-form') return;
+  event.preventDefault();
+  try {
+    const next = ER.copy(derived.physical), table = next.tables.find(t => t.id === physicalTableId);
+    next.database = $('physical-database').value.trim(); next.createDatabase = $('physical-create-database').checked; next.ifNotExists = $('physical-if-not-exists').checked;
+    next.includeEngine = $('physical-include-engine').checked; next.includeCharset = $('physical-include-charset').checked;
+    table.name = $('physical-table-name').value.trim();
+    table.columns.forEach((c, i) => {
+      for (const option of ['type', 'default', 'unsigned', 'nullable', 'autoIncrement', 'unique']) {
+        const input = $('physical-form').querySelector(`[data-column="${i}"][data-option="${option}"]`);
+        c[option] = input.type === 'checkbox' ? input.checked : input.value.trim();
+      }
+    });
+    table.foreignKeys.forEach((f, i) => ['onDelete', 'onUpdate'].forEach(option => { f[option] = $('physical-form').querySelector(`[data-fk="${i}"][data-option="${option}"]`).value; }));
+    table.checks = $('physical-checks').value.split('\n').map(s => s.trim()).filter(Boolean);
+    const validated = ER.validatePhysical(ER.syncPhysicalTypes(next), derived.relational);
+    remember(); derived.physical = validated; formDirty = false; draw(); persist(); notify('Scelte SQL applicate e salvate nel progetto.');
+  } catch (error) { errorIn('physical-error', error.message); }
+});
+$('physical-panel').addEventListener('click', async event => {
+  const action = event.target.closest('[data-sql-action]')?.dataset.sqlAction; if (!action) return;
+  try {
+    if (formDirty) notify('Uso lo script applicato. Premi Applica scelte SQL per includere la bozza.');
+    const sql = ER.physicalSQL(derived.physical, derived.relational);
+    if (action === 'download') download(sql, 'text/plain;charset=utf-8', 'sql');
+    else { await navigator.clipboard.writeText(sql); notify('SQL applicato copiato.'); }
+  } catch (error) { notify(`SQL non disponibile: ${error.message}`); }
 });
 ['structure', 'text'].forEach(mode => {
   $(`${mode}-tab`).addEventListener('click', () => tab(mode));
@@ -519,6 +611,7 @@ $('export-menu').addEventListener('click', async event => {
     if (action === 'json') download(JSON.stringify({ ...model, derived }, null, 2), 'application/json', 'json');
     else if (action === 'svg') download(ER.svg(shownModel()), 'image/svg+xml', 'svg');
     else if (action === 'relational') download(ER.relationalText(derived.relational), 'text/plain;charset=utf-8', 'txt');
+    else if (action === 'sql') download(ER.physicalSQL(derived.physical, derived.relational), 'text/plain;charset=utf-8', 'sql');
     else if (action === 'png') {
       const summary = $('export-menu').querySelector('summary'); summary.style.pointerEvents = 'none'; summary.setAttribute('aria-busy', 'true');
       try { await exportPNG(); } finally { summary.style.pointerEvents = ''; summary.removeAttribute('aria-busy'); }
@@ -528,7 +621,7 @@ $('export-menu').addEventListener('click', async event => {
 document.addEventListener('click', event => { if (!event.target.closest('#export-menu')) $('export-menu').open = false; });
 let beforePrintView;
 window.addEventListener('beforeprint', () => {
-  if (stage === 'relational') return;
+  if (!diagramStage()) return;
   beforePrintView = { ...view }; const b = ER.render(shownModel()).bounds;
   $('diagram').setAttribute('viewBox', `${b.x} ${b.y} ${b.w} ${b.h}`); $('diagram').style.aspectRatio = `${b.w} / ${b.h}`;
 });
@@ -536,4 +629,14 @@ window.addEventListener('afterprint', () => { if (beforePrintView) view = before
 $('help-button').addEventListener('click', () => $('help-dialog').showModal()); $('close-help').addEventListener('click', () => $('help-dialog').close());
 $('help-dialog').addEventListener('click', event => { if (event.target === $('help-dialog')) { const r = $('help-dialog').getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) $('help-dialog').close(); } });
 window.addEventListener('beforeunload', event => { if (formDirty || (!storageAvailable && (history.length || textDirty))) { event.preventDefault(); event.returnValue = ''; } });
+const lab = TramaLab.mount({ panel: $('lab-panel'), notify,
+  getPhysical(required = true) {
+    if (!derived?.physical || derived.signature !== ER.serialize(model)) {
+      if (required) throw Error('Genera prima lo schema fisico aggiornato con Genera SQL.');
+      return null;
+    }
+    return { result: derived.physical, relational: derived.relational };
+  },
+  onConnection(count) { if (stage === 'lab') $('schema-counts').textContent = `${count} tabelle · MySQL locale`; }
+});
 draw(); persist();

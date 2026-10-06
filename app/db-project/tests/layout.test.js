@@ -2,6 +2,29 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const ER = require('../model.js');
+const fs = require('node:fs');
+
+test('Riordina uses empty cells to align all three branches of the pharmacy schema', () => {
+  const original = ER.parse(fs.readFileSync(require.resolve('./fixtures/farmacia.txt'), 'utf8'));
+  const arranged = ER.layout(ER.copy(original));
+  const medicine = arranged.entities.find(e => e.name === 'medicinale');
+  arranged.relationships.forEach(r => {
+    const [a, b] = r.ends.map(end => arranged.entities.find(e => e.id === end.entity));
+    assert.ok(a.x === b.x || a.y === b.y, `${r.name} must have aligned participants`);
+    assert.equal(r.x, (a.x + b.x) / 2); assert.equal(r.y, (a.y + b.y) / 2);
+  });
+  assert.equal(new Set(arranged.relationships.map(r => r.x === medicine.x ? (r.y > medicine.y ? 'bottom' : 'top') : r.x > medicine.x ? 'right' : 'left')).size, 3);
+  const routes = [...ER.render(arranged).markup.matchAll(/<polyline class="connection" points="([^"]+)"/g)];
+  assert.equal(routes.length, 6);
+  routes.forEach(([, points]) => {
+    const p = points.split(' ').map(v => v.split(',').map(Number));
+    assert.ok(p.every(v => v[0] === p[0][0]) || p.every(v => v[1] === p[0][1]));
+  });
+  const boxes = [...arranged.entities, ...arranged.relationships].map(ER.nodeBounds);
+  boxes.forEach((a, i) => boxes.slice(i + 1).forEach(b => assert.ok(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top)));
+  assert.equal(ER.serialize(arranged), ER.serialize(original));
+  assert.deepEqual(ER.layout(ER.copy(arranged)), arranged);
+});
 
 test('Riordina aligns centers, balances diamonds and frees connection sides', () => {
   const source = ER.parse(`ENTITA: medicinale

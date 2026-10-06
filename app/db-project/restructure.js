@@ -136,14 +136,13 @@
         if (attr.cardinality.endsWith('N')) {
           if (!hasKey(node)) throw Error(`${node.name}: indica un identificatore per estrarre ${label}.`);
           const value = blank(unique(`${node.name}_${label}`, model.entities)); model.entities.push(value);
-          // A progressive identifier preserves tuples with optional fields and nested collections.
-          const needsOrdinal = !!attr.children;
-          const local = needsOrdinal ? unique('progressivo', attr.children) : attr.name;
-          value.attributes = needsOrdinal ? [plain(local), ...ER.copy(attr.children)] : [plain(attr.name)];
-          const r = association(`ha_${label}`, node, value, `${min},N`);
-          value.externalKey = { attributes: [local], owners: [{ entity: node.id, relationship: r.id }] };
-          if (needsOrdinal) { value.attributes = flatten(value, value.attributes); constraints.push(`${value.name}: progressivo univoco per proprietario; due valori completi uguali non devono comparire due volte per lo stesso proprietario.`); }
-          report.push(`${node.name}.${label}: estratto in ${value.name}; identificatore ${local} + proprietario; cardinalità (${min},N).`);
+          const values = attr.children ? ER.copy(attr.children) : [plain(attr.name)];
+          values.filter(a => a.name.toLowerCase() === 'id').forEach(a => { a.name = unique('valore_id', values); });
+          value.attributes = [plain('id', true), ...values];
+          association(`ha_${label}`, node, value, `${min},N`);
+          if (attr.children) value.attributes = flatten(value, value.attributes);
+          constraints.push(`${value.name}: due valori completi uguali non devono comparire due volte per lo stesso proprietario.`);
+          report.push(`${node.name}.${label}: estratto in ${value.name}, con identificatore proprio id e ${attr.children ? 'componenti del valore' : `valore in ${values[0].name}`}; cardinalità (${min},N).`);
         } else if (attr.children) {
           if (attr.cardinality[0] === '0') constraints.push(`${node.name}.${label}: tutte le componenti appartengono alla stessa presenza opzionale; se il composto è presente, le componenti obbligatorie devono essere valorizzate.`);
           output.push(...flatten(node, attr.children, label, optional || attr.cardinality[0] === '0', inheritedKey || attr.key));
@@ -158,5 +157,36 @@
     return { model: ER.layout(ER.validate(model)), report };
   }
   ER.restructure = restructure;
+  function upgradeMultivalues(raw) {
+    const result = { model: ER.validate(raw.model), report: [...raw.report], renames: Object.create(null) };
+    result.report = result.report.map(line => {
+      const match = line.match(/: estratto in ([^;]+); identificatore /);
+      const value = match && result.model.entities.find(e => e.name === match[1] && e.externalKey);
+      if (!value) return line;
+      const compound = value.attributes.length > 1 || result.model.entities.some(e => e.externalKey?.owners.some(o => o.entity === value.id));
+      const ordinal = compound && value.attributes.find(a => a.name === value.externalKey.attributes[0] && /^progressivo(?:_\d+)?$/.test(a.name));
+      const renames = Object.create(null);
+      if (ordinal) { renames[ordinal.name] = 'id'; ordinal.name = 'id'; ordinal.key = true; }
+      else {
+        value.attributes.filter(a => a.name.toLowerCase() === 'id').forEach(a => {
+          let name = 'valore_id', i = 2;
+          while (value.attributes.some(other => other.name.toLowerCase() === name.toLowerCase())) name = `valore_id_${i++}`;
+          renames[a.name] = name; a.name = name;
+        });
+        value.attributes.unshift({ name: 'id', key: true, cardinality: '1,1' });
+        value.attributePositions = {}; value.attributeSides = {};
+      }
+      delete value.externalKey;
+      result.renames[value.id] = renames;
+      result.model.constraints ||= [];
+      result.model.constraints = result.model.constraints.map(c => c.startsWith(`${value.name}: progressivo univoco per proprietario; `) ? c.replace('progressivo univoco per proprietario; ', '') : c);
+      const constraint = `${value.name}: due valori completi uguali non devono comparire due volte per lo stesso proprietario.`;
+      if (!result.model.constraints.includes(constraint)) result.model.constraints.push(constraint);
+      return line.replace(/; identificatore .*; cardinalità /, ', con identificatore proprio id e valore separato; cardinalità ');
+    });
+    result.model = ER.validate(result.model);
+    return result;
+  }
+  ER.upgradeMultivalues = upgradeMultivalues;
   if (typeof module !== 'undefined' && module.exports) module.exports = { restructure };
 })(globalThis);

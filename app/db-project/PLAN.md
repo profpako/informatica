@@ -1,7 +1,7 @@
 # Piano di lavoro · editor ER
 
 ## Obiettivo
-App didattica locale per descrivere e disegnare lo schema ER iniziale, derivarne una ristrutturazione controllata e generare lo schema relazionale. HTML, CSS, JavaScript e SVG, senza backend.
+App didattica locale per descrivere e disegnare lo schema ER iniziale, derivarne una ristrutturazione controllata e generare lo schema relazionale e fisico. HTML, CSS, JavaScript e SVG per l’editor; laboratorio MySQL/Ollama con backend Python locale.
 
 ## 1. Comprendere il riferimento
 - [x] Leggere la traccia e le analisi rilevanti del PDF.
@@ -75,4 +75,49 @@ ER iniziale, ER ristrutturato e schema relazionale implementati; pagina locale a
 - [x] Correzione della notazione richiesta dall’utente: FK con doppia sottolineatura; PK composta come unico gruppo con linea continua, anche nelle N:M ricorsive (`segue`), conservando FK distinte. Regressione del markup e verifica browser/stampa.
 
 ## Fuori da questo ciclo
-Schema fisico, SQL, interpretazione libera tramite AI e collaborazione online. La disposizione automatica non ottimizza tutti gli incroci: si può correggere manualmente.
+Interpretazione libera tramite AI e collaborazione online. La disposizione automatica non ottimizza tutti gli incroci: si può correggere manualmente.
+
+## 7. Schema fisico MySQL
+- [x] Leggere le convenzioni SQL del PDF TikTok e proporre tipi modificabili.
+- [x] Conservare PK, FK e UNIQUE, propagare i tipi delle FK e ordinare le creazioni per dipendenze.
+- [x] Modificare tipi, opzioni, DEFAULT, azioni FK e CHECK per tabella, con validazione e bozza esplicita.
+- [x] Salvare nel progetto JSON, recuperare con Annulla/Ripristina ed esportare SQL.
+- [x] Regressioni eseguibili per proposta, vincoli, tipi incompatibili, frammenti SQL e dipendenze cicliche.
+- [x] Verifica browser di modifiche, propagazione FK, Annulla/Ripristina, errori e persistenza dopo ricaricamento.
+- [x] Eseguire cinque script di esempio su un MariaDB 10.4 temporaneo isolato: 30 tabelle create, comprese FK cicliche.
+- [ ] Verifica browser finale di download SQL e vista mobile: connessione al browser interrotta. Prova diretta su MySQL 8 non disponibile nell’ambiente.
+
+## Correzioni dopo la generazione SQL
+- [x] Estrarre i multivalore con identificatore proprio id e valore separato, anche per composti e collezioni annidate.
+- [x] Nomi plurali delle relazioni derivate dalle entità, con gestione dei conflitti e conservazione dei nomi delle colonne FK.
+- [x] Celle vuote nei piccoli layout: regressione sullo schema farmacia con quattro entità, sei tratti rettilinei e rombi al punto medio.
+- [x] Spunte facoltative per ENGINE e DEFAULT CHARSET; scelta Non specificare per azioni FK e nota esplicativa.
+- [x] Tredici test automatici superati; import dei vecchi flag SQL mantiene il comportamento precedente.
+- [ ] Verifica visiva nell’app: il collegamento al browser non è disponibile. Diagramma farmacia esportato in `.impeccable/review/riordina-farmacia.svg`.
+
+## Identificatori e nomi nei progetti già salvati
+- [x] Aggiornare al caricamento le vecchie estrazioni multivalore: id proprio e valore separato, mantenendo le posizioni dei nodi.
+- [x] Pluralizzare la testa dei nomi composti: numeri di telefono, ditte_numeri_di_telefono.
+- [x] FK con prefisso id e nome singolare del proprietario/ruolo: id_ditta, id_follower, id_seguito_da; distinguere le componenti delle chiavi composte.
+- [x] Recuperare tipi, opzioni, nomi SQL personalizzati e CHECK dei progetti precedenti, aggiornando i riferimenti alle FK rinominate anche negli identificatori esterni.
+- [x] Sedici test superati, compresa la regressione sul caricamento del vecchio progetto con telefono come identificatore esterno.
+
+## 8. Dati sintetici e laboratorio delle query
+- [x] Connessione esplicita al server locale per porta/database, versione visibile e credenziali solo nella sessione.
+- [x] Creare le tabelle dallo schema fisico in un database vuoto, senza sostituire tabelle esistenti.
+- [x] Ollama locale con Qwen3.5 2B Q4_K_M come proposta per Apple Silicon con 8 GB: contesto 4096, poche righe, una richiesta alla volta, rilascio della memoria.
+- [x] Generazione JSON per tabella in ordine di dipendenze, riferimenti FK e campione delle chiavi uniche; id assegnati dall’app.
+- [x] Validazione preventiva su MySQL con rollback, anteprima modificabile e INSERT parametrizzati con annullamento del gruppo in caso di errore.
+- [x] Analisi delle SELECT MySQL, tabelle/alias/colonne, linee delle giunzioni e righe intermedie ottenute dallo stesso snapshot.
+- [x] Limiti espliciti: SELECT senza sottoquery/CTE/UNION/USING/NATURAL, 200 righe di anteprima, tempo limitato e sola lettura.
+- [x] Diciassette test Node e cinque controlli Python, incluso percorso sul MariaDB temporaneo e rollback per CHECK non valido.
+- [x] Prova AI reale sullo schema farmacia: sei tabelle, tre righe per tabella, 18 inserimenti e query JOIN/WHERE validi in 41,3 s sul Mac M1 da 16 GB. Nessuna prova sul Mac da 8 GB.
+- [x] Verifica API HTTP di connessione/schema/query/scollegamento e isolamento di origini/file; avvio aggiornato su porta 4173.
+- [ ] Verifica visiva desktop/mobile: CUA non espone browser o app, con errore di avvio del collegamento nativo. Anteprima generata in `/private/tmp/trama-lab-query-preview.html`.
+
+## Feedback della generazione
+- [x] Individuare la richiesta attiva su MySQL/Ollama e la conclusione della generazione: il feedback era lontano dai controlli e il risultato appariva sotto senza scroll.
+- [x] Avanzamento trasmesso dal server, tabella/fase visibili accanto al pulsante, errori locali e proposta portata in vista.
+- [x] Rendere espliciti i due passaggi Genera proposta / Inserisci queste righe e la natura sintetica dei dati.
+- [x] Regressioni su eventi ricevuti prima della conclusione, errori e risposta interrotta, anche con caratteri UTF-8 divisi fra pacchetti; diciotto test Node e cinque test Python unitari passati.
+- [x] Verifica HTTP con Ollama reale e MySQL di MAMP sul prompt dell’utente: eventi immediati, 18 righe proposte in 44 secondi, conteggi delle righe invariati dopo la generazione.

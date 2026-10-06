@@ -1,0 +1,2 @@
+PyMySQL[rsa]==1.2.3
+sqlglot==30.21.0

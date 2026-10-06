@@ -298,6 +298,16 @@
         if (next < score) score = next;
         else { positions.set(a, pa); positions.set(b, pb); }
       }
+      // Empty cells let small graphs form stars/T shapes instead of forcing a diagonal in a full grid.
+      if (count <= 16 && !model.hierarchies?.length) for (let pass = 0; pass < 2; pass++) for (const id of order) {
+        for (let y = 0; y <= row; y++) for (let x = 0; x < columns; x++) {
+          if ([...positions.values()].some(p => p.x === x && p.y === y)) continue;
+          const previous = positions.get(id); positions.set(id, { x, y });
+          const next = topologyScore(positions);
+          if (next < score) score = next;
+          else positions.set(id, previous);
+        }
+      }
       model.entities.forEach(e => {
         const p = positions.get(e.id), blocked = {};
         links.filter(pair => pair.includes(e.id)).forEach(pair => {
@@ -317,7 +327,7 @@
       const radius = (boxes, axis) => Math.max(0, ...boxes.flatMap(b => axis === 'x' ? [-b.left, b.right] : [-b.top, b.bottom]));
       const spacing = axis => Math.max(260, 2 * (radius(model.entities.map(measuredBounds), axis) + radius(model.relationships.map(measuredBounds), axis) + 55));
       let cellWidth = spacing('x'), cellHeight = spacing('y');
-      const lastColumn = Math.max(...[...positions.values()].map(p => p.x)), lastRow = row - 1;
+      const lastColumn = Math.max(...[...positions.values()].map(p => p.x)), lastRow = Math.max(...[...positions.values()].map(p => p.y));
       // Very wide compound trees must not push centers beyond the saved coordinate range.
       if (lastColumn * cellWidth > 90000 || lastRow * cellHeight > 90000) {
         nodes.forEach(n => { n.side = 'top'; n.attributeSides = {}; });

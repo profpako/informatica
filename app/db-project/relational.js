@@ -1,17 +1,41 @@
 (function (root) {
   'use strict';
   const ER = typeof module !== 'undefined' && module.exports ? require('./model.js') : root.ER;
+  // ponytail: common Italian nouns and suffixes; unusual/invariant names can be adjusted in the SQL editor.
+  function pluralName(name) {
+    const exceptions = { uomo: 'uomini', uovo: 'uova', braccio: 'braccia', mano: 'mani', ala: 'ali', foto: 'foto', auto: 'auto', radio: 'radio', cinema: 'cinema', problema: 'problemi', sistema: 'sistemi', programma: 'programmi', schema: 'schemi', tema: 'temi', specie: 'specie', serie: 'serie', persona: 'persone', ditta: 'ditte' };
+    // Pluralize the head of compound nouns, leaving their complements singular.
+    const words = name.replace(/(^|[_\s])n([_ ])telefono(?=$|[_\s])/gi, (_, prefix, separator) => prefix + ['numero', 'di', 'telefono'].join(separator));
+    let complement = false;
+    return words.replace(/[\p{L}]+/gu, word => {
+      const lower = word.toLowerCase();
+      if (word.length === 1) return word;
+      if (['di', 'da', 'del', 'della'].includes(lower)) { complement = true; return word; }
+      if (complement || ['e', ...Object.values(exceptions)].includes(lower)) return word;
+      let plural = exceptions[lower];
+      if (!plural) {
+        if (/ca$/.test(lower)) plural = lower.slice(0, -2) + 'che';
+        else if (/ga$/.test(lower)) plural = lower.slice(0, -2) + 'ghe';
+        else if (/a$/.test(lower)) plural = lower.slice(0, -1) + 'e';
+        else if (/[oe]$/.test(lower)) plural = lower.slice(0, -1) + 'i';
+        else return word;
+      }
+      return word === word.toUpperCase() ? plural.toUpperCase() : word[0] === word[0].toUpperCase() ? plural[0].toUpperCase() + plural.slice(1) : plural;
+    });
+  }
   function relational(input) {
     const model = ER.validate(input);
     if (model.hierarchies?.length || [...model.entities, ...model.relationships].some(n => ER.attributeEntries(n.attributes).some(e => e.attr.children || e.attr.cardinality.endsWith('N')))) throw Error('Genera prima lo schema ER ristrutturato.');
-    const tables = model.entities.map(e => ({ id: e.id, name: e.name, columns: e.attributes.map(a => ({ name: a.name, nullable: a.cardinality === '0,1' })), primaryKey: [], foreignKeys: [], unique: [] }));
+    const tables = [];
+    const uniqueName = (base, list) => { let name = base, i = 2; while (list.some(n => n.name.toLowerCase() === name.toLowerCase())) name = `${base}_${i++}`; return name; };
+    model.entities.forEach(e => tables.push({ id: e.id, name: uniqueName(pluralName(e.name), tables), columns: e.attributes.map(a => ({ name: a.name, nullable: a.cardinality === '0,1' })), primaryKey: [], foreignKeys: [], unique: [] }));
     const constraints = [...(model.constraints || [])], report = [], consumed = new Set(), resolving = new Set(), resolved = new Set();
     const table = id => tables.find(t => t.id === id);
-    const uniqueName = (base, list) => { let name = base, i = 2; while (list.some(n => n.name.toLowerCase() === name.toLowerCase())) name = `${base}_${i++}`; return name; };
     function reference(target, owner, prefix, nullable) {
       resolve(owner.id);
       const columns = owner.primaryKey.map(key => {
-        const name = uniqueName(`${prefix}_${key}`, target.columns); target.columns.push({ name, nullable }); return name;
+        const label = prefix.toLowerCase().replace(/\s+/g, '_');
+        const name = uniqueName(`id_${label}${owner.primaryKey.length > 1 ? '_' + key.toLowerCase() : ''}`, target.columns); target.columns.push({ name, nullable }); return name;
       });
       target.foreignKeys.push({ columns, target: owner.id, references: [...owner.primaryKey] });
       if (nullable && columns.length > 1) constraints.push(`${target.name}: la FK composta ${columns.join(' + ')} deve essere interamente nulla oppure interamente valorizzata.`);
@@ -26,7 +50,7 @@
         t.primaryKey = [...entity.externalKey.attributes];
         entity.externalKey.owners.forEach(o => {
           const r = model.relationships.find(r => r.id === o.relationship), end = r.ends.find(end => end.entity === o.entity), owner = table(o.entity);
-          const keys = reference(t, owner, end.role || owner.name, false); t.primaryKey.push(...keys); consumed.add(r.id);
+          const keys = reference(t, owner, end.role || model.entities.find(e => e.id === owner.id).name, false); t.primaryKey.push(...keys); consumed.add(r.id);
           if (end.cardinality.endsWith('1')) t.unique.push(keys);
         });
         if (own.length) t.unique.push(own);
@@ -45,14 +69,14 @@
       const single = r.ends.map((end, i) => end.cardinality.endsWith('1') ? i : -1).filter(i => i >= 0);
       if (!single.length) {
         const t = { id: r.id, name: uniqueName(r.name, tables), columns: r.attributes.map(a => ({ name: a.name, nullable: a.cardinality === '0,1' })), primaryKey: [], foreignKeys: [], unique: [] };
-        r.ends.forEach((end, i) => { const owner = table(end.entity); t.primaryKey.push(...reference(t, owner, end.role || (r.ends[0].entity === r.ends[1].entity ? `${owner.name}_${i + 1}` : owner.name), false)); });
+        r.ends.forEach((end, i) => { const owner = table(end.entity), name = model.entities.find(e => e.id === owner.id).name; t.primaryKey.push(...reference(t, owner, end.role || (r.ends[0].entity === r.ends[1].entity ? `${name}_${i + 1}` : name), false)); });
         const ownKeys = r.attributes.filter(a => a.key).map(a => a.name); if (ownKeys.length) t.unique.push(ownKeys);
         tables.push(t); report.push(`${r.name}: associazione N:M tradotta nella relazione ${t.name}, con PK composta dalle chiavi dei partecipanti.`);
       } else {
         // Prefer a mandatory single-participation end for 1:1 to avoid unnecessary nulls.
         const i = single.find(i => r.ends[i].cardinality[0] === '1') ?? single[0], j = 1 - i;
         const target = table(r.ends[i].entity), owner = table(r.ends[j].entity), nullable = r.ends[i].cardinality[0] === '0';
-        const columns = reference(target, owner, r.ends[j].role || r.name, nullable);
+        const columns = reference(target, owner, r.ends[j].role || model.entities.find(e => e.id === owner.id).name, nullable);
         if (single.length === 2) target.unique.push(columns);
         const relationColumns = [];
         r.attributes.forEach(a => { const name = uniqueName(`${r.name}_${a.name}`, target.columns); target.columns.push({ name, nullable: nullable || a.cardinality === '0,1' }); relationColumns.push({ name, required: a.cardinality === '1,1' }); });

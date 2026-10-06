@@ -95,3 +95,21 @@ test('ER esteso e ristrutturazione: alberi, ISA, copie, cardinalità e identific
   const compoundKey = ER.restructure(ER.parse('ENTITA: A\n- codice [ID]\n  - prefisso\n  - numero')).model;
   assert.deepEqual(compoundKey.entities[0].attributes.map(a => [a.name, a.key]), [['codice_prefisso', true], ['codice_numero', true]]);
 });
+
+test('Multivalues receive an independent id and separate value, including nested collections and id conflicts', () => {
+  const input = ER.parse('ENTITA: Persona\n- codice [ID]\n- telefono [1,N]\n- id [0,N]\n- recapito [0,N]\n  - id\n  - città\n  - telefoni [0,N]');
+  const before = ER.serialize(input), { model, report } = ER.restructure(input);
+  const phone = model.entities.find(e => e.name === 'Persona_telefono');
+  assert.deepEqual(phone.attributes.map(a => [a.name, a.key]), [['id', true], ['telefono', false]]);
+  assert.equal(phone.externalKey, undefined);
+  const relation = model.relationships.find(r => r.name === 'ha_telefono');
+  assert.equal(relation.ends[0].cardinality, '1,N'); assert.equal(relation.ends[1].cardinality, '1,1');
+  const ids = model.entities.find(e => e.name === 'Persona_id');
+  assert.deepEqual(ids.attributes.map(a => a.name), ['id', 'valore_id']);
+  model.entities.slice(1).forEach(e => assert.deepEqual(e.attributes.filter(a => a.key).map(a => a.name), ['id']));
+  assert.ok(model.entities.find(e => e.name === 'Persona_recapito').attributes.some(a => a.name === 'valore_id' && !a.key));
+  assert.ok(model.constraints.some(c => c.includes('due valori completi uguali')));
+  assert.ok(report.some(c => c.includes('identificatore proprio id')));
+  assert.equal(ER.serialize(input), before);
+  assert.equal(ER.serialize(ER.parse(ER.serialize(model))), ER.serialize(model));
+});

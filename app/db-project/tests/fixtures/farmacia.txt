@@ -1,0 +1,24 @@
+TITOLO: Farmacia
+ENTITA: medicinale
+- id [ID]
+- prezzo_con_prescrizione
+- prezzo_senza_prescrizione [0,1]
+- prescrizione
+ENTITA: ditta
+- id [ID]
+- nome
+- fax [0,1]
+- n_telefono [1,N]
+ENTITA: utilizzo
+- id [ID]
+- nome
+- descrizione [0,1]
+ENTITA: articolo
+- id [ID]
+- data_acquisto
+- data_scadenza
+- data_vendita [0,1]
+- prezzo_vendita_effettivo [0,1]
+ASSOCIAZIONE: prevede: medicinale [1,N] -> utilizzo [0,N]
+ASSOCIAZIONE: fornisce: medicinale [1,1] -> ditta [0,N]
+ASSOCIAZIONE: acquisto: medicinale [0,N] -> articolo [1,1]
