@@ -28,11 +28,18 @@ Avvia il tuo MySQL e scegli **Laboratorio query** nel selettore della vista. Ind
 
 Puoi collegare un database esistente oppure usare **Crea le tabelle dallo schema fisico** su un database vuoto. Questa operazione usa lo schema SQL applicato e il nome del database scelto nel laboratorio; conserva le spunte ENGINE/CHARSET. Non sostituisce tabelle esistenti. DDL MySQL non è transazionale: se una creazione fallisce, le tabelle già create restano e il pannello lo segnala.
 
-Per generare dati installa e avvia [Ollama](https://ollama.com/download), poi scarica una volta il modello:
+Per generare dati prepara l’AI **su ogni computer**: servono Ollama (il programma che esegue l’AI) e Qwen (il modello). La guida nel laboratorio si apre automaticamente se Ollama non risponde o non sono disponibili modelli locali.
+
+1. **Installa e avvia Ollama.** Su [Mac](https://ollama.com/download/mac), con macOS 14 o successivo, sposta l’app scaricata in Applicazioni, aprila e consenti l’installazione del comando `ollama` se richiesta. Su [Windows](https://ollama.com/download/windows), con Windows 10 22H2 o successivo, esegui l’installer e apri Ollama dal menu Start. Su [Linux](https://docs.ollama.com/linux), segui l’installazione ufficiale e avvia il servizio con `sudo systemctl start ollama`; senza systemd, esegui `ollama serve` in un Terminale da lasciare aperto.
+2. **Scarica Qwen.** Apri un nuovo Terminale su Mac/Linux o PowerShell su Windows, incolla il comando seguente e premi Invio. Serve Internet per il download; attendi la conferma `success`. Se il download si interrompe, ripeti il comando.
 
 ```bash
 ollama pull qwen3.5:2b-q4_K_M
 ```
+
+3. **Verifica nell’app.** Lascia Ollama attivo, torna al Laboratorio query e premi **Verifica Ollama**. Il modello deve comparire nel menu; poi collega MySQL e scegli le tabelle per generare dati.
+
+Se `ollama` non viene trovato, chiudi e riapri Terminale/PowerShell dopo l’installazione. Se Ollama non risponde, avvia l’app su Mac/Windows. Per l’installazione con Homebrew su Mac usa `brew install ollama` e `brew services start ollama`; in alternativa esegui `ollama serve` e lascia aperto il Terminale. `ollama list` mostra i modelli scaricati. Senza Ollama puoi comunque usare l’editor e le query MySQL.
 
 È la proposta iniziale per Mac Apple Silicon con **8 GB**: circa [1,9 GB su disco](https://ollama.com/library/qwen3.5:2b-q4_K_M), contesto di 4096 token, tre righe per tabella iniziali, una richiesta alla volta e rilascio del modello dalla RAM dopo la richiesta. Il consumo di RAM supera la dimensione del file; la fluidità su un Mac da 8 GB va verificata sul dispositivo. Puoi scegliere altri modelli installati, per esempio il 4B su computer con più memoria. Dopo il download il laboratorio usa solo Ollama locale sulla porta 11434.
 

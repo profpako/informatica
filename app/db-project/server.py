@@ -370,7 +370,7 @@ def ollama(path, payload=None, timeout=5):
     except HTTPError as error:
         raise ValueError('Ollama: ' + error.read(2000).decode(errors='replace')) from error
     except (URLError, TimeoutError) as error:
-        raise ValueError('Ollama non risponde. Avvialo e scarica il modello indicato nel laboratorio.') from error
+        raise ValueError('Ollama non risponde su questo computer (127.0.0.1:11434). Se è già installato, avvia l’app o il servizio; altrimenti installalo seguendo la guida nel laboratorio. Non è possibile verificare i modelli finché Ollama non risponde.') from error
 
 
 def generation_order(tables, selected):

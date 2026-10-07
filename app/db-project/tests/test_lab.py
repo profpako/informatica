@@ -26,6 +26,16 @@ TABLES = [dict(name='ditte', columns=[column('id', key='PRI', auto=True), column
 
 
 class Laboratory(unittest.TestCase):
+    def test_unreachable_ollama_does_not_claim_the_model_is_missing(self):
+        with patch.object(server, 'urlopen', side_effect=server.URLError('Connection refused')):
+            with self.assertRaises(ValueError) as failure:
+                server.ollama('tags')
+        message = str(failure.exception)
+        self.assertIn('127.0.0.1:11434', message)
+        self.assertIn('avvia l’app o il servizio', message)
+        self.assertIn('Non è possibile verificare i modelli', message)
+        self.assertNotIn('scarica', message)
+
     def test_dependency_guidance_distinguishes_setup_from_restart_and_reaches_all_endpoints(self):
         with patch.object(server, 'pymysql', None), patch.object(server, 'sqlglot', None), \
              patch.object(server, 'ROOT', Path('/trama')):

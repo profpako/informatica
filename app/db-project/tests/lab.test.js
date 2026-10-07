@@ -38,7 +38,7 @@ test('Generation progress arrives before completion across split UTF-8 chunks, a
   await assert.rejects(readGenerationStream(interrupted, () => {}), /interrotta/);
 });
 
-test('The laboratory displays the server dependency diagnosis without replacing it with generic installation advice', async () => {
+test('The laboratory preserves dependency diagnoses and guides AI setup according to service and model availability', async () => {
   const nodes = new Map();
   const node = id => {
     if (!nodes.has(id)) nodes.set(id, { value: '', handlers: {},
@@ -47,16 +47,35 @@ test('The laboratory displays the server dependency diagnosis without replacing 
     return nodes.get(id);
   };
   const diagnosis = 'Le dipendenze ora sono disponibili. Arresta il server con Ctrl+C e riavvia ./start_app.sh.';
+  let state = { dependencies: false, dependencyError: diagnosis, models: [] };
   const context = vm.createContext({ ER, localStorage: { getItem() {} }, fetch: async () => ({
-    ok: true, text: async () => JSON.stringify({ dependencies: false, dependencyError: diagnosis, models: [] })
+    ok: true, text: async () => JSON.stringify(state)
   }) });
   vm.runInContext(fs.readFileSync(require.resolve('../lab.js'), 'utf8'), context);
-  context.TramaLab.mount({ panel: { querySelector: selector => node(selector.slice(1)), addEventListener() {}, setAttribute() {} },
-    notify() {}, onConnection() {}, getPhysical() {} });
+  const panel = { querySelector: selector => node(selector.slice(1)), addEventListener() {}, setAttribute() {} };
+  context.TramaLab.mount({ panel, notify() {}, onConnection() {}, getPhysical() {} });
   node('lab-ai-refresh').handlers.click();
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(node('lab-error').hidden, false);
   assert.equal(node('lab-error').textContent, diagnosis);
+  for (const link of ['https://ollama.com/download/mac', 'https://ollama.com/download/windows', 'https://docs.ollama.com/linux']) {
+    assert.ok(panel.innerHTML.includes(link));
+  }
+  assert.match(panel.innerHTML, /ollama pull qwen3\.5:2b-q4_K_M/);
+  assert.match(panel.innerHTML, /PowerShell/);
+  for (const [models, aiError, expected, guideOpen] of [
+    [[], 'Ollama non risponde.', /Ollama non risponde.*guida/, true],
+    [[], '', /Ollama è attivo.*ollama pull qwen3\.5:2b-q4_K_M/, true],
+    [['qwen3.5:2b-q4_K_M'], '', /AI locale disponibile/, false],
+    [['another-local-model'], '', /AI locale disponibile/, false]
+  ]) {
+    state = { dependencies: true, models, aiError };
+    node('lab-ai-refresh').handlers.click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(node('lab-error').hidden, true);
+    assert.match(node('lab-ai-status').textContent, expected);
+    assert.equal(node('lab-ai-setup').open, guideOpen);
+  }
 });
 
 test('Expired insertion preserves the proposal, unlocks reconnection and inserts only after reconnecting to the same database', async () => {
