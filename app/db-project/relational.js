@@ -29,15 +29,16 @@
     const tables = [];
     const uniqueName = (base, list) => { let name = base, i = 2; while (list.some(n => n.name.toLowerCase() === name.toLowerCase())) name = `${base}_${i++}`; return name; };
     model.entities.forEach(e => tables.push({ id: e.id, name: uniqueName(pluralName(e.name), tables), columns: e.attributes.map(a => ({ name: a.name, nullable: a.cardinality === '0,1' })), primaryKey: [], foreignKeys: [], unique: [] }));
-    const constraints = [...(model.constraints || [])], report = [], consumed = new Set(), resolving = new Set(), resolved = new Set();
+    const constraints = [...(model.constraints || [])], report = [], participation = [], consumed = new Set(), resolving = new Set(), resolved = new Set();
     const table = id => tables.find(t => t.id === id);
-    function reference(target, owner, prefix, nullable) {
+    function reference(target, owner, prefix, nullable, cardinality) {
       resolve(owner.id);
       const columns = owner.primaryKey.map(key => {
         const label = prefix.toLowerCase().replace(/\s+/g, '_');
         const name = uniqueName(`id_${label}${owner.primaryKey.length > 1 ? '_' + key.toLowerCase() : ''}`, target.columns); target.columns.push({ name, nullable }); return name;
       });
       target.foreignKeys.push({ columns, target: owner.id, references: [...owner.primaryKey] });
+      if (cardinality) participation.push({ table: target.id, columns: [...columns], min: Number(cardinality[0]), max: cardinality.endsWith('1') ? 1 : null });
       if (nullable && columns.length > 1) constraints.push(`${target.name}: la FK composta ${columns.join(' + ')} deve essere interamente nulla oppure interamente valorizzata.`);
       return columns;
     }
@@ -50,7 +51,7 @@
         t.primaryKey = [...entity.externalKey.attributes];
         entity.externalKey.owners.forEach(o => {
           const r = model.relationships.find(r => r.id === o.relationship), end = r.ends.find(end => end.entity === o.entity), owner = table(o.entity);
-          const keys = reference(t, owner, end.role || model.entities.find(e => e.id === owner.id).name, false); t.primaryKey.push(...keys); consumed.add(r.id);
+          const keys = reference(t, owner, end.role || model.entities.find(e => e.id === owner.id).name, false, end.cardinality); t.primaryKey.push(...keys); consumed.add(r.id);
           if (end.cardinality.endsWith('1')) t.unique.push(keys);
         });
         if (own.length) t.unique.push(own);
@@ -69,14 +70,14 @@
       const single = r.ends.map((end, i) => end.cardinality.endsWith('1') ? i : -1).filter(i => i >= 0);
       if (!single.length) {
         const t = { id: r.id, name: uniqueName(r.name, tables), columns: r.attributes.map(a => ({ name: a.name, nullable: a.cardinality === '0,1' })), primaryKey: [], foreignKeys: [], unique: [] };
-        r.ends.forEach((end, i) => { const owner = table(end.entity), name = model.entities.find(e => e.id === owner.id).name; t.primaryKey.push(...reference(t, owner, end.role || (r.ends[0].entity === r.ends[1].entity ? `${name}_${i + 1}` : name), false)); });
+        r.ends.forEach((end, i) => { const owner = table(end.entity), name = model.entities.find(e => e.id === owner.id).name; t.primaryKey.push(...reference(t, owner, end.role || (r.ends[0].entity === r.ends[1].entity ? `${name}_${i + 1}` : name), false, end.cardinality)); });
         const ownKeys = r.attributes.filter(a => a.key).map(a => a.name); if (ownKeys.length) t.unique.push(ownKeys);
         tables.push(t); report.push(`${r.name}: associazione N:M tradotta nella relazione ${t.name}, con PK composta dalle chiavi dei partecipanti.`);
       } else {
         // Prefer a mandatory single-participation end for 1:1 to avoid unnecessary nulls.
         const i = single.find(i => r.ends[i].cardinality[0] === '1') ?? single[0], j = 1 - i;
         const target = table(r.ends[i].entity), owner = table(r.ends[j].entity), nullable = r.ends[i].cardinality[0] === '0';
-        const columns = reference(target, owner, r.ends[j].role || model.entities.find(e => e.id === owner.id).name, nullable);
+        const columns = reference(target, owner, r.ends[j].role || model.entities.find(e => e.id === owner.id).name, nullable, r.ends[j].cardinality);
         if (single.length === 2) target.unique.push(columns);
         const relationColumns = [];
         r.attributes.forEach(a => { const name = uniqueName(`${r.name}_${a.name}`, target.columns); target.columns.push({ name, nullable: nullable || a.cardinality === '0,1' }); relationColumns.push({ name, required: a.cardinality === '1,1' }); });
@@ -92,7 +93,7 @@
       });
     });
     tables.forEach(t => { t.unique = t.unique.filter((cols, i, list) => cols.join('|') !== t.primaryKey.join('|') && list.findIndex(c => c.join('|') === cols.join('|')) === i); });
-    return { title: model.title, tables, constraints: [...new Set(constraints)], report };
+    return { title: model.title, tables, constraints: [...new Set(constraints)], report, participation };
   }
   function relationalText(result) {
     return [`SCHEMA RELAZIONALE: ${result.title}`, '', ...result.tables.flatMap(t => [

@@ -121,3 +121,42 @@ Interpretazione libera tramite AI e collaborazione online. La disposizione autom
 - [x] Rendere espliciti i due passaggi Genera proposta / Inserisci queste righe e la natura sintetica dei dati.
 - [x] Regressioni su eventi ricevuti prima della conclusione, errori e risposta interrotta, anche con caratteri UTF-8 divisi fra pacchetti; diciotto test Node e cinque test Python unitari passati.
 - [x] Verifica HTTP con Ollama reale e MySQL di MAMP sul prompt dell’utente: eventi immediati, 18 righe proposte in 44 secondi, conteggi delle righe invariati dopo la generazione.
+
+## Modello AI in base all’hardware
+- [x] Confrontare schede Hugging Face di Qwen3.5, Qwen3 Instruct, Gemma 4 e Phi-4-mini e verificare i tag Q4_K_M su Ollama.
+- [x] Rilevare RAM e architettura localmente senza dipendenze aggiuntive, distinguendo Apple Silicon anche sotto Rosetta; scelta manuale quando il rilevamento manca.
+- [x] Suggerire 2B per 8 GB, 4B per 16 GB e 9B da 24 GB Apple Silicon; mostrare dimensione del download, scheda, comando e margini di memoria.
+- [x] Conservare le preferenze dei modelli installati e rendere utilizzabile la scelta esplicita dopo il download.
+- [x] Verifica API sulla macchina reale: Apple Silicon, 16 GB, proposta 4B e modello 2B già installato conservato nella lista; server di prova arrestato al termine.
+- [ ] Benchmark comparativo di qualità e tempi del 4B/9B sul popolamento: nessun nuovo modello scaricato durante questa modifica.
+
+## Lunghezze dei valori generati
+- [x] Trasmettere i limiti CHAR/VARCHAR nello schema JSON e nel contesto; chiedere telefoni e fax compatti, con prefisso incluso nel limite.
+- [x] Indicare lunghezza ricevuta e limite nell’errore e nel tentativo di correzione; rifiutare i valori senza troncarli.
+- [x] Regressione su correzione riuscita, errore persistente, campo nullable e assenza di INSERT per dati invalidi: dieci test Python unitari passati, integrazione MySQL isolata non avviata.
+- [x] Verifica reale con Ollama 2B e 4B sul percorso di generazione per tre telefoni VARCHAR(13): entrambi validi al primo tentativo, rispettivamente 6,2 e 11,68 s. Metadati e INSERT sostituiti nella prova per non scrivere sul database dell’utente.
+
+## Nome del database nel laboratorio
+- [x] Propagare il nome SQL applicato al laboratorio anche con preferenze già salvate; conservare le scelte manuali finché il nome dello schema non cambia.
+- [x] Conservare il database di una connessione attiva o in corso, segnalare il nuovo nome e proporlo dopo lo scollegamento.
+- [x] Regressione su nome precedente, cambio e ricaricamento, preferenze del modello, scelta manuale e connessione in corso: ventidue test Node passati.
+
+## Filtri booleani e passaggi della SELECT
+
+- [x] AND/OR riconosciuti come operatori; le funzioni annidate restano controllate.
+- [x] Tabella intermedia con tutte le colonne, PK/FK e clausole coinvolte, accanto al risultato finale.
+- [x] WHERE/HAVING: esito VERO/FALSO/NULL delle condizioni sulle righe prima del filtro.
+- [x] GROUP BY: righe per gruppo e aggregati calcolati da MySQL; HAVING separato.
+- [x] ORDER BY e LIMIT/OFFSET separati, conservando i risultati della query originale.
+- [x] Prova MySQL 8 isolato: query dell’utente, AND/OR con NULL e parentesi, alias/posizioni GROUP BY, HAVING, LEFT JOIN, aggregato vuoto e ORDER BY con LIMIT/OFFSET.
+- [x] Ventiquattro test Node e quindici Python passati, inclusi tre test su MySQL isolato; verifica browser desktop della query e dei gruppi.
+
+## Distribuzione guidata e feedback delle query
+
+- [x] Quantità indipendenti da 0 a 20 per tabella, con zero per escluderla; minimi ER trasmessi separatamente dalle FK SQL.
+- [x] Distribuzione controllata per una FK non ricorsiva, anche composta: coprire i minimi, distribuire le righe extra e contare i collegamenti già presenti.
+- [x] Rifiutare quantità incompatibili prima della generazione AI e verificare i limiti dopo gli INSERT, annullando il gruppo in caso di JSON modificato non valido.
+- [x] Feedback delle query vicino al pulsante, stato di esecuzione e scroll locale per gli errori; testo SQL conservato.
+- [x] Ventitre test Node e quattordici Python passati, inclusi due test su MySQL 8.0.44 isolato.
+- [x] Ollama 4B reale: 5 ditte, 8 telefoni e due ulteriori telefoni sulle ditte meno servite, 32,42 secondi complessivi; controllo del percorso completo nel browser desktop.
+- [ ] Distribuzione automatica N:M/multiple FK/ricorsione e verifica mobile: fuori da questa modifica.

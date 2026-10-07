@@ -51,6 +51,8 @@ test('Entity relations use plural names and id-first foreign key names', () => {
   assert.deepEqual(r.tables.find(t => t.name === 'ditte_numeri_di_telefono').primaryKey, ['id']);
   assert.equal(r.tables.find(t => t.name === 'ditte_numeri_di_telefono').foreignKeys.length, 1);
   assert.deepEqual(r.tables.find(t => t.name === 'ditte_numeri_di_telefono').foreignKeys[0].columns, ['id_ditta']);
+  assert.deepEqual(r.participation.find(p => p.table === r.tables.find(t => t.name === 'ditte_numeri_di_telefono').id),
+    { table: r.tables.find(t => t.name === 'ditte_numeri_di_telefono').id, columns: ['id_ditta'], min: 1, max: null });
   assert.deepEqual(r.tables.find(t => t.name === 'medicinali').foreignKeys[0].columns, ['id_ditta']);
   const collision = ER.relational(ER.parse('ENTITA: Persona\n- id [ID]\nENTITA: Persone\n- id [ID]'));
   assert.deepEqual(collision.tables.map(t => t.name), ['Persone', 'Persone_2']);
