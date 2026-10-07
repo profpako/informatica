@@ -26,6 +26,42 @@ TABLES = [dict(name='ditte', columns=[column('id', key='PRI', auto=True), column
 
 
 class Laboratory(unittest.TestCase):
+    def test_external_fax_length_error_names_the_value_limit_and_rolls_back(self):
+        table = dict(name='ditte', engine='InnoDB', columns=[column('nome', 'varchar(50)'), column('fax', 'varchar(13)', nullable=True)])
+        script = "INSERT INTO ditte(nome,fax) VALUES('Pfizer Inc.',NULL),('Bayer AG','+49 30 2555-0'),('Merck KGaA','+49 6151 70-0'),('Novartis AG','+41 61 324 11 11'),('GSK plc','+44 20 8046 4600')"
+        items = server.population_inserts(script, [table], 'farmacia')
+        conn = MagicMock(); cur = conn.cursor.return_value.__enter__.return_value; cur.warning_count = 0
+        with self.assertRaisesRegex(ValueError, r'Inserimento 1, ditte, riga 4: fax: testo troppo lungo \(16 caratteri; massimo 13.*Nessuna nuova riga inserita'):
+            server.write_rows(conn, [table], items, [], True)
+        conn.rollback.assert_called_once(); conn.commit.assert_not_called()
+        self.assertEqual(cur.execute.call_count, 4, 'SQL mode plus the three rows preceding the invalid fax')
+        compact = server.population_inserts(script.replace('+41 61 324 11 11', '+41613241111').replace('+44 20 8046 4600', '+442080464600'), [table], 'farmacia')
+        self.assertEqual(server.write_rows(conn, [table], compact, [], True), dict(inserted=5))
+        conn.commit.assert_called_once()
+
+    def test_external_sql_accepts_literal_inserts_and_rejects_other_operations_before_writes(self):
+        tables = [dict(**TABLES[0], engine='InnoDB')]
+        script = "```sql\nUSE farmacia; START TRANSACTION; INSERT INTO farmacia.ditte(id,nome) VALUES(1,'Ditta; A'),(2,NULL); INSERT INTO ditte VALUES(3,'B'); COMMIT;\n```"
+        items = server.population_inserts(script, tables, 'farmacia')
+        self.assertEqual(items[0]['rows'], [dict(id=1, nome='Ditta; A'), dict(id=2, nome=None)])
+        self.assertEqual(items[1]['rows'], [dict(id=3, nome='B')])
+        literals = server.population_inserts("INSERT INTO ditte(id,nome) VALUES(-2,0.123456789012345678901),(TRUE,FALSE)", tables, 'farmacia')
+        self.assertEqual(literals[0]['rows'], [dict(id=-2, nome='0.123456789012345678901'), dict(id=1, nome=0)])
+        for sql in ['DELETE FROM ditte', 'DROP TABLE ditte', 'UPDATE ditte SET id=3',
+                    'SET FOREIGN_KEY_CHECKS=0', 'USE altro', 'ROLLBACK',
+                    'INSERT INTO altro.ditte VALUES(1,2)', 'INSERT IGNORE INTO ditte VALUES(1,2)',
+                    'INSERT INTO ditte VALUES(1,2) ON DUPLICATE KEY UPDATE nome=2',
+                    'INSERT INTO ditte SELECT * FROM ditte', 'INSERT INTO ditte VALUES(1,SLEEP(1))',
+                    'INSERT INTO ditte VALUES(1,@x)', 'INSERT INTO ditte VALUES(1,(SELECT 2))',
+                    'INSERT INTO ditte(id,id) VALUES(1,2)', 'INSERT INTO ditte(x) VALUES(1)',
+                    'INSERT INTO ditte VALUES(1)', 'USE farmacia;',
+                    'INSERT INTO ditte VALUES' + ','.join("(1,'A')" for _ in range(501))]:
+            with self.subTest(sql=sql[:100]), self.assertRaises(ValueError):
+                server.population_inserts(sql, tables, 'farmacia')
+        tables[0]['engine'] = 'MyISAM'
+        with self.assertRaisesRegex(ValueError, 'InnoDB'):
+            server.population_inserts("INSERT INTO ditte VALUES(1,'A')", tables, 'farmacia')
+
     def test_guided_population_covers_parents_with_different_table_counts_before_ai(self):
         tables = [dict(**TABLES[0], engine='InnoDB', unique=[['id']], ddl='CREATE TABLE ditte(id INT PRIMARY KEY, nome VARCHAR(50))'),
                   dict(name='telefoni', engine='InnoDB', unique=[['id']], ddl='CREATE TABLE telefoni(id INT PRIMARY KEY, id_ditta INT, telefono VARCHAR(13))',
@@ -285,6 +321,87 @@ class Laboratory(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get('TRAMA_TEST_PORT'), 'isolated MySQL server not requested')
 class MySQLPath(unittest.TestCase):
+    def test_export_structure_and_all_rows_restore_cycles_and_preserve_values(self):
+        port = int(os.environ['TRAMA_TEST_PORT']); self.assertEqual(port, 3308)
+        database = 'trama_lab_export_' + secrets.token_hex(6)
+        config = dict(host='127.0.0.1', port=port, user='root', password='', database=database)
+        restored = database + '_copy'
+        try:
+            with server.connect(config, False) as conn, conn.cursor() as cur:
+                cur.execute('CREATE DATABASE ' + server.quote(database)); cur.execute('USE ' + server.quote(database))
+                cur.execute('CREATE TABLE a(id INT AUTO_INCREMENT PRIMARY KEY, id_b INT, nome VARCHAR(100), prezzo DECIMAL(12,4), giorno DATE, raw VARBINARY(20), doppio DECIMAL(13,4) GENERATED ALWAYS AS(prezzo*2) STORED) ENGINE=InnoDB')
+                cur.execute('CREATE TABLE b(id INT PRIMARY KEY, id_a INT, FOREIGN KEY(id_a) REFERENCES a(id)) ENGINE=InnoDB')
+                cur.execute('ALTER TABLE a ADD FOREIGN KEY(id_b) REFERENCES b(id)')
+                cur.execute('INSERT INTO a(id,nome,prezzo,giorno,raw) VALUES(1,%s,1234.5678,%s,%s)', ("Ditta 'A' \\ nuova\nè", '2026-10-07', b'\x00\xff'))
+                cur.execute('INSERT INTO b VALUES(2,1)'); cur.execute('UPDATE a SET id_b=2 WHERE id=1')
+                cur.execute('INSERT INTO a(id,nome) VALUES(3,NULL)'); conn.commit()
+            empty = server.export_database(config)
+            self.assertEqual(empty['rowCount'], 0); self.assertNotIn('INSERT INTO', empty['sql'])
+            self.assertNotIn('rows', empty['tables'][0]); self.assertIn('ALTER TABLE', empty['sql'])
+            dump = server.export_database(config, True)
+            self.assertEqual(dump['rowCount'], 3)
+            self.assertEqual(dump['tables'][0]['rows'][0]['prezzo'], '1234.5678')
+            self.assertEqual(dump['tables'][0]['rows'][0]['raw'], '00ff')
+            self.assertEqual(dump['tables'][0]['rows'][1]['nome'], None)
+            self.assertIn("X'00ff'", dump['sql'])
+            statements = server.parse_sql(dump['sql'].replace(server.quote(database), server.quote(restored)))
+            inserts = [s for s in statements if isinstance(s, server.exp.Insert)]
+            self.assertTrue(all('doppio' not in [c.name for c in s.this.expressions] for s in inserts))
+            with server.connect(config, False) as conn, conn.cursor() as cur:
+                for statement in statements:
+                    cur.execute(statement.sql(dialect='mysql', comments=False))
+                conn.commit()
+            copy_config = {**config, 'database': restored}
+            copy = server.export_database(copy_config, True)
+            self.assertEqual([t['rows'] for t in copy['tables']], [t['rows'] for t in dump['tables']])
+            self.assertTrue(all(t['foreignKeys'] for t in copy['tables']), 'Both cyclic foreign keys must survive')
+            with self.assertRaises(ValueError):
+                server.export_database(config, 'yes')
+        finally:
+            with server.connect(config, False) as conn, conn.cursor() as cur:
+                for name in (restored, database):
+                    cur.execute('DROP DATABASE IF EXISTS ' + server.quote(name))
+                conn.commit()
+
+    def test_external_population_verification_commit_defaults_and_whole_block_rollback(self):
+        port = int(os.environ['TRAMA_TEST_PORT']); self.assertEqual(port, 3308)
+        database = 'trama_lab_external_' + secrets.token_hex(6)
+        config = dict(host='127.0.0.1', port=port, user='root', password='', database=database)
+        ddl = f'''CREATE DATABASE {server.quote(database)}; USE {server.quote(database)};
+            CREATE TABLE ditte(id INT AUTO_INCREMENT PRIMARY KEY,nome VARCHAR(50) UNIQUE NOT NULL,fax VARCHAR(13),sigla VARCHAR(2) DEFAULT 'IT') ENGINE=InnoDB;
+            CREATE TABLE telefoni(id INT AUTO_INCREMENT PRIMARY KEY,id_ditta INT NOT NULL,telefono VARCHAR(13) NOT NULL,prezzo DECIMAL(10,2) NOT NULL CHECK(prezzo>=0),FOREIGN KEY(id_ditta) REFERENCES ditte(id)) ENGINE=InnoDB;'''
+        try:
+            server.prepare(config, ddl)
+            with server.connect(config) as conn, conn.cursor() as cur:
+                cur.execute("INSERT INTO ditte(id,nome) VALUES(1,'Esistente')"); conn.commit()
+            sql = f"USE {server.quote(database)}; START TRANSACTION; INSERT INTO ditte(id,nome,fax) VALUES(10,'Nuova',NULL); INSERT INTO telefoni(id,id_ditta,telefono,prezzo) VALUES(NULL,10,'3330000000',1.25); INSERT INTO ditte(nome) VALUES" + ','.join(f"('Ditta {i}')" for i in range(25)) + '; COMMIT;'
+            verified = server.populate_sql(config, sql)
+            self.assertEqual(verified['inserted'], 27); self.assertEqual(verified['statements'], 3)
+            self.assertTrue(verified['tables'][2]['data']['truncated'])
+            with server.connect(config) as conn, conn.cursor() as cur:
+                cur.execute('SELECT COUNT(*) FROM ditte'); self.assertEqual(cur.fetchone()[0], 1)
+                cur.execute('SELECT COUNT(*) FROM telefoni'); self.assertEqual(cur.fetchone()[0], 0)
+            result = server.populate_sql(config, sql, commit=True, expected=verified['fingerprint'])
+            self.assertEqual(result['inserted'], 27)
+            with server.connect(config) as conn, conn.cursor() as cur:
+                cur.execute("SELECT id,nome,fax,sigla FROM ditte WHERE id=10"); self.assertEqual(cur.fetchone(), (10,'Nuova',None,'IT'))
+                cur.execute('SELECT id_ditta,prezzo FROM telefoni'); self.assertEqual(cur.fetchone(), (10, server.decimal.Decimal('1.25')))
+            for second in ["INSERT INTO telefoni(id_ditta,telefono,prezzo) VALUES(999,'3330000001',1)",
+                           "INSERT INTO telefoni(id_ditta,telefono,prezzo) VALUES(1000,'3330000001',-1)",
+                           "INSERT INTO telefoni(id_ditta,telefono,prezzo) VALUES(1000,'12345678901234',1)",
+                           "INSERT INTO ditte(nome) VALUES('Esistente')"]:
+                bad = "INSERT INTO ditte(id,nome) VALUES(1000,'Da annullare');" + second
+                with self.subTest(second=second), self.assertRaisesRegex(ValueError, 'Nessuna nuova riga'):
+                    server.populate_sql(config, bad, commit=True, expected=verified['fingerprint'])
+                with server.connect(config) as conn, conn.cursor() as cur:
+                    cur.execute('SELECT COUNT(*) FROM ditte WHERE id=1000'); self.assertEqual(cur.fetchone()[0], 0)
+                    cur.execute('SELECT COUNT(*) FROM ditte'); self.assertEqual(cur.fetchone()[0], 27)
+            with self.assertRaisesRegex(ValueError, 'schema'):
+                server.populate_sql(config, "INSERT INTO ditte(nome) VALUES('No')", commit=True, expected='old')
+        finally:
+            with server.connect(config, False) as conn, conn.cursor() as cur:
+                cur.execute('DROP DATABASE IF EXISTS ' + server.quote(database)); conn.commit()
+
     def test_boolean_filters_group_members_having_and_order_on_mysql(self):
         port = int(os.environ['TRAMA_TEST_PORT']); self.assertEqual(port, 3308)
         database = 'trama_lab_select_' + secrets.token_hex(6)
@@ -418,7 +535,7 @@ class MySQLPath(unittest.TestCase):
             self.assertEqual(len(result['steps'][1]['data']['rows']), 2)
             self.assertEqual(result['steps'][-1]['data']['rows'], [['Cerotto', 'Ditta B']])
             bad = dict(fingerprint=server.fingerprint(tables), tables=[dict(name='ditte', rows=[dict(id=3, nome='Ditta C')]), dict(name='medicinali', rows=[dict(id=3, id_ditta=3, nome='Fallisce', prezzo=-1)])])
-            with self.assertRaises(server.pymysql.MySQLError):
+            with self.assertRaises(ValueError):
                 server.insert(config, bad)
             remaining = server.execute_query(config, 'SELECT COUNT(*) AS totale FROM ditte')['steps'][-1]['data']['rows']
             self.assertEqual(remaining, [[2]])

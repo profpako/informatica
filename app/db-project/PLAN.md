@@ -160,3 +160,15 @@ Interpretazione libera tramite AI e collaborazione online. La disposizione autom
 - [x] Ventitre test Node e quattordici Python passati, inclusi due test su MySQL 8.0.44 isolato.
 - [x] Ollama 4B reale: 5 ditte, 8 telefoni e due ulteriori telefoni sulle ditte meno servite, 32,42 secondi complessivi; controllo del percorso completo nel browser desktop.
 - [ ] Distribuzione automatica N:M/multiple FK/ricorsione e verifica mobile: fuori da questa modifica.
+
+## Popolamento esterno ed esportazione dei dati
+
+- [x] Scelta tra AI locale e SQL ottenuto da AI esterna; preparazione manuale del prompt con schema completo e dati esistenti facoltativi.
+- [x] Parser degli INSERT letterali, verifica MySQL annullata e inserimento atomico, senza modificare righe esistenti o disattivare FK.
+- [x] Errori e conferme accanto al codice, anteprima, invalidazione della verifica dopo modifiche e scadenza della sessione.
+- [x] Esportazione SQL dello schema applicato o del database collegato, con tutte le righe facoltative e FK differite anche per cicli.
+- [x] JSON modificabile con fotografia opzionale della struttura e delle righe; Apri non popola MySQL.
+- [x] Ventisei test Node e diciannove Python passati, inclusi cinque percorsi MySQL isolati: ripristino dell’esportazione e rollback degli INSERT esterni.
+- [x] Prompt locale nascosto con AI esterna, errori sulle lunghezze con limite esplicito, colonne intermedie inutilizzate in grigio e connessione rapida MAMP/XAMPP.
+- [x] Browser desktop: prompt con 18 righe esistenti, verifica e inserimento di due nuove righe, SQL e JSON scaricati con tutte le 20 righe e progetto conservato.
+- [ ] Miglioramento del contesto dell’AI locale: rinviato come richiesto.

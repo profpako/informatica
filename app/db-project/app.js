@@ -111,7 +111,7 @@ function draw() {
   $('schema-stage').querySelector('[value="physical"]').disabled = !derived?.physical;
   document.querySelectorAll('[data-export="svg"],[data-export="png"]').forEach(b => { b.disabled = !diagramStage(); });
   document.querySelector('[data-export="relational"]').disabled = !derived?.relational;
-  document.querySelector('[data-export="sql"]').disabled = !derived?.physical;
+  document.querySelector('[data-export="sql"]').disabled = !derived?.physical && !lab.connectionInfo();
   const stale = derived && derived.signature !== ER.serialize(model);
   $('derived-status').textContent = derived ? stale ? 'Da rigenerare' : 'Ristrutturazione aggiornata' : 'Da generare';
   $('derived-status').classList.toggle('warning', !!stale);
@@ -424,7 +424,7 @@ $('physical-panel').addEventListener('click', async event => {
   try {
     if (formDirty) notify('Uso lo script applicato. Premi Applica scelte SQL per includere la bozza.');
     const sql = ER.physicalSQL(derived.physical, derived.relational);
-    if (action === 'download') download(sql, 'text/plain;charset=utf-8', 'sql');
+    if (action === 'download') openDataExport('sql');
     else { await navigator.clipboard.writeText(sql); notify('SQL applicato copiato.'); }
   } catch (error) { notify(`SQL non disponibile: ${error.message}`); }
 });
@@ -558,7 +558,7 @@ $('diagram').addEventListener('keydown', event => {
   } catch (error) { notify(error.message); }
 });
 document.addEventListener('keydown', event => {
-  if (event.target.closest('input,textarea,select') || $('help-dialog').open) return;
+  if (event.target.closest('input,textarea,select') || $('help-dialog').open || $('export-dialog').open) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); travel(event.shiftKey); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); travel(true); }
 });
@@ -578,7 +578,7 @@ $('open-project').addEventListener('click', () => $('file-input').click());
 $('file-input').addEventListener('change', async event => {
   const file = event.target.files[0]; event.target.value = ''; if (!file) return;
   try {
-    if (file.size > 1000000) throw Error('Il file supera il limite di 1 MB.');
+    if (file.size > 10000000) throw Error('Il file supera il limite di 10 MB.');
     const raw = JSON.parse(await file.text()), next = ER.validate(raw.model || raw), importedDerived = readDerived(raw.derived);
     if (replaceProject(next, importedDerived)) notify('Progetto aperto. Schema iniziale e ristrutturazione sono conservati.');
   } catch (error) { notify(`Impossibile aprire il progetto: ${error.message}`); }
@@ -603,15 +603,54 @@ async function exportPNG() {
     download(blob, 'image/png', 'png');
   } finally { URL.revokeObjectURL(url); }
 }
+let exportAction;
+function updateExportOptions() {
+  const connected = lab.connectionInfo(), sql = exportAction === 'sql', fromDatabase = sql && $('export-source').value === 'database';
+  $('export-data').disabled = !connected || (sql && !fromDatabase);
+  if ($('export-data').disabled) $('export-data').checked = false;
+  $('export-note').textContent = sql
+    ? fromDatabase ? `Struttura effettiva di ${connected?.database || 'MySQL'}. Con la spunta vengono inclusi anche tutti gli INSERT delle righe presenti.` : 'Schema fisico applicato nel progetto. Per includere le righe, scegli il database MySQL collegato.'
+    : `Il JSON conserva il progetto modificabile. ${connected ? `Con la spunta aggiunge una fotografia della struttura e delle righe di ${connected.database}, utile anche come contesto per l’AI.` : 'Collega MySQL nel laboratorio per includere le righe.'} Apri progetto non inserisce i dati in MySQL.`;
+}
+function openDataExport(action) {
+  exportAction = action;
+  const connected = lab.connectionInfo(), options = $('export-source').options;
+  options[0].disabled = !derived?.physical; options[1].disabled = !connected;
+  options[1].textContent = connected ? `Database MySQL collegato · ${connected.database}` : 'Database MySQL non collegato';
+  $('export-source').value = connected && (stage === 'lab' || !derived?.physical) ? 'database' : 'project';
+  $('export-source-field').hidden = action !== 'sql';
+  $('export-title').textContent = action === 'sql' ? 'Esporta SQL MySQL' : 'Esporta progetto JSON';
+  $('export-data').checked = false; $('export-error').hidden = true;
+  updateExportOptions(); $('export-dialog').showModal();
+}
+$('export-source').addEventListener('change', updateExportOptions);
+$('close-export').addEventListener('click', () => $('export-dialog').close());
+$('export-form').addEventListener('submit', async event => {
+  event.preventDefault(); $('export-error').hidden = true;
+  const button = $('export-download'); button.disabled = true; button.textContent = 'Esportazione in corso…';
+  const action = exportAction, includeData = $('export-data').checked, fromDatabase = $('export-source').value === 'database';
+  const project = { ...ER.copy(model), derived: derived ? ER.copy(derived) : null };
+  $('export-source').disabled = true; $('export-data').disabled = true;
+  try {
+    const snapshot = includeData || (action === 'sql' && fromDatabase) ? await lab.exportDatabase(includeData) : null;
+    if (action === 'json') {
+      if (snapshot) { const { sql, ...databaseSnapshot } = snapshot; project.databaseSnapshot = databaseSnapshot; }
+      const content = JSON.stringify(project, null, 2);
+      if (new Blob([content]).size > 10000000) throw Error('Il file JSON completo supera 10 MB. Esporta il progetto senza dati.');
+      download(content, 'application/json', 'json');
+    } else download(snapshot ? snapshot.sql : ER.physicalSQL(project.derived.physical, project.derived.relational), 'text/plain;charset=utf-8', 'sql');
+    $('export-dialog').close(); notify(includeData ? 'File esportato con tutte le righe presenti nel database.' : 'File esportato senza dati.');
+  } catch (error) { errorIn('export-error', error.message); }
+  finally { button.disabled = false; button.textContent = 'Scarica file'; $('export-source').disabled = false; updateExportOptions(); }
+});
 $('export-menu').addEventListener('click', async event => {
   const action = event.target.closest('[data-export]')?.dataset.export; if (!action) return;
   $('export-menu').open = false;
   if (formDirty || textDirty) notify('Esporto l’ultimo schema applicato. Applica o genera le modifiche in bozza per includerle.');
   try {
-    if (action === 'json') download(JSON.stringify({ ...model, derived }, null, 2), 'application/json', 'json');
+    if (action === 'json' || action === 'sql') openDataExport(action);
     else if (action === 'svg') download(ER.svg(shownModel()), 'image/svg+xml', 'svg');
     else if (action === 'relational') download(ER.relationalText(derived.relational), 'text/plain;charset=utf-8', 'txt');
-    else if (action === 'sql') download(ER.physicalSQL(derived.physical, derived.relational), 'text/plain;charset=utf-8', 'sql');
     else if (action === 'png') {
       const summary = $('export-menu').querySelector('summary'); summary.style.pointerEvents = 'none'; summary.setAttribute('aria-busy', 'true');
       try { await exportPNG(); } finally { summary.style.pointerEvents = ''; summary.removeAttribute('aria-busy'); }
@@ -637,6 +676,9 @@ const lab = TramaLab.mount({ panel: $('lab-panel'), notify,
     }
     return { result: derived.physical, relational: derived.relational };
   },
-  onConnection(count) { if (stage === 'lab') $('schema-counts').textContent = `${count} tabelle · MySQL locale`; }
+  onConnection(count) {
+    if (stage === 'lab') $('schema-counts').textContent = `${count} tabelle · MySQL locale`;
+    document.querySelector('[data-export="sql"]').disabled = !derived?.physical && !count;
+  }
 });
 draw(); persist();

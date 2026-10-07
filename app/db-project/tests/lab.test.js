@@ -4,6 +4,121 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ER = require('../model.js');
 require('../restructure.js'); require('../relational.js'); require('../physical.js');
+test('Connection presets fill MAMP/XAMPP defaults, retain custom ports and never store passwords', async () => {
+  const nodes = new Map(), requests = []; let stored;
+  function node(id) {
+    if (!nodes.has(id)) nodes.set(id, { id, value: '', dataset: {}, handlers: {},
+      addEventListener(type, handler) { this.handlers[type] = handler; }, setAttribute() {},
+      querySelectorAll() { return id === 'lab-connect-form' ? ['lab-host', 'lab-port', 'lab-user', 'lab-password', 'lab-database', 'lab-connection-preset'].map(node) : []; },
+      querySelector() { return node(id + '-submit'); } });
+    return nodes.get(id);
+  }
+  const panel = { set innerHTML(html) {
+    for (const match of html.matchAll(/<\w+[^>]*\bid="([^"]+)"([^>]*)>/g)) node(match[1]).value = /\bvalue="([^"]*)"/.exec(match[2])?.[1] || '';
+  }, querySelector: selector => node(selector.slice(1)), addEventListener(type, handler) { this[type] = handler; }, setAttribute() {} };
+  const context = vm.createContext({ ER, localStorage: { getItem: () => stored, setItem(key, value) { stored = value; } },
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body); requests.push({ url, body });
+      const data = url === '/api/connect' ? { session: 'connected', exists: true, version: 'MySQL', tables: [] } : {};
+      return { ok: true, text: async () => JSON.stringify(data) };
+    } });
+  vm.runInContext(fs.readFileSync(require.resolve('../lab.js'), 'utf8'), context);
+  const mount = () => context.TramaLab.mount({ panel, notify() {}, getPhysical() {}, onConnection() {} });
+  const change = (id, value) => { node(id).value = value; panel.change({ target: { id, closest() {} } }); };
+  const act = async id => { node(id).handlers[id === 'lab-connect-form' ? 'submit' : 'click']({ preventDefault() {} }); await new Promise(resolve => setImmediate(resolve)); };
+  mount(); node('lab-database').value = 'farmacia';
+  change('lab-connection-preset', 'mamp');
+  assert.equal(node('lab-port').value, '8889'); assert.equal(node('lab-user').value, 'root'); assert.equal(node('lab-password').value, 'root');
+  assert.equal(node('lab-database').value, 'farmacia'); assert.equal(Object.hasOwn(JSON.parse(stored), 'password'), false);
+  change('lab-port', '3307'); mount();
+  assert.equal(node('lab-port').value, '3307'); assert.equal(node('lab-connection-preset').value, 'mamp'); assert.equal(node('lab-password').value, 'root');
+  await act('lab-connect-form'); assert.equal(requests.at(-1).body.port, 3307); assert.equal(requests.at(-1).body.password, 'root');
+  assert.equal(node('lab-connection-preset').disabled, true); assert.equal(node('lab-password').value, '');
+  await act('lab-disconnect'); assert.equal(node('lab-connection-preset').disabled, false); assert.equal(node('lab-password').value, 'root');
+  change('lab-password', 'private-password'); assert.equal(node('lab-connection-preset').value, 'custom'); assert.ok(!stored.includes('private-password'));
+  mount(); assert.equal(node('lab-password').value, ''); assert.equal(node('lab-connection-preset').value, 'custom');
+  change('lab-connection-preset', 'xampp');
+  assert.equal(node('lab-port').value, '3306'); assert.equal(node('lab-user').value, 'root'); assert.equal(node('lab-password').value, '');
+  await act('lab-connect-form'); assert.equal(requests.at(-1).body.password, ''); assert.equal(requests.at(-1).body.database, 'farmacia');
+});
+test('External AI works without Ollama, packages the full schema, checks SQL and invalidates stale executions', async () => {
+  const nodes = new Map(), requests = []; let stored, expire = false, fail = false;
+  function node(id) {
+    if (!nodes.has(id)) nodes.set(id, { id, value: '', hidden: false, dataset: {}, handlers: {}, textContent: '',
+      set innerHTML(html) { this.html = html; parse(html); }, get innerHTML() { return this.html; },
+      addEventListener(type, handler) { this.handlers[type] = handler; }, setAttribute() {},
+      querySelectorAll() { return []; }, querySelector() { return node(id + '-submit'); }, scrollIntoView() {} });
+    return nodes.get(id);
+  }
+  function parse(html) {
+    for (const match of html.matchAll(/<\w+[^>]*\bid="([^"]+)"([^>]*)>/g)) {
+      const n = node(match[1]); n.value = /\bvalue="([^"]*)"/.exec(match[2])?.[1] || ''; n.hidden = /\bhidden\b/.test(match[2]);
+      n.checked = /\bchecked\b/.test(match[2]);
+    }
+  }
+  const tables = [{ name: 'ditte', ddl: 'CREATE TABLE ditte(id INT PRIMARY KEY, nome VARCHAR(50))', columns: [], foreignKeys: [] },
+    { name: 'telefoni', ddl: 'CREATE TABLE telefoni(id INT PRIMARY KEY, id_ditta INT)', columns: [], foreignKeys: [] }];
+  const panel = { hidden: false, set innerHTML(html) { parse(html); }, querySelector: selector => node(selector.slice(1)),
+    addEventListener(type, handler) { this[type] = handler; }, setAttribute() {} };
+  const context = vm.createContext({ ER, localStorage: { getItem() {}, setItem(key, value) { stored = JSON.parse(value); } },
+    navigator: { clipboard: { async writeText(text) { assert.match(text, /CREATE TABLE telefoni/); } } },
+    fetch: async (url, options) => {
+      const body = options.body ? JSON.parse(options.body) : null; requests.push({ url, body });
+      let data = {};
+      if (url === '/api/status') data = { dependencies: true, models: [], aiError: 'Ollama non risponde.' };
+      if (url === '/api/connect') data = { session: 'connected', exists: true, version: 'MySQL', tables };
+      if (url === '/api/schema') data = { tables };
+      if (url === '/api/export') data = { tables, includeData: body.includeData, rowCount: body.includeData ? 1 : 0,
+        sql: tables.map(t => t.ddl + ';').join('\n') + (body.includeData ? "\nINSERT INTO ditte(id,nome) VALUES(1,'Esistente');" : '') };
+      if (url === '/api/populate-sql') {
+        if (expire) return { ok: false, text: async () => JSON.stringify({ code: 'session_expired', error: 'Connessione scaduta.' }) };
+        if (fail) return { ok: false, text: async () => JSON.stringify({ error: 'Chiave duplicata. Nessuna nuova riga inserita.' }) };
+        data = { inserted: 1, statements: 1, fingerprint: 'schema-now', tables: [{ name: 'ditte', count: 1, data: { columns: ['nome'], rows: [['<Acme>']] } }] };
+      }
+      return { ok: true, text: async () => JSON.stringify(data) };
+    } });
+  vm.runInContext(fs.readFileSync(require.resolve('../lab.js'), 'utf8'), context);
+  const lab = context.TramaLab.mount({ panel, notify() {}, onConnection() {}, getPhysical() {} });
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const act = async (id, type = 'click') => { node(id).handlers[type]({ preventDefault() {} }); await settle(); };
+  await lab.activate(); node('lab-host').value = '127.0.0.1'; node('lab-database').value = 'farmacia'; await act('lab-connect-form', 'submit');
+  assert.equal(node('lab-prompt').disabled, false); assert.equal(node('lab-external-population').hidden, true);
+  node('lab-population-mode').value = 'external'; panel.change({ target: { id: 'lab-population-mode', closest() {} } });
+  assert.equal(node('lab-external-population').hidden, false);
+  assert.equal(node('lab-prompt').disabled, true); assert.equal(node('lab-external-sql').disabled, false);
+  // A native select changes visibility immediately through the shared controls.
+  await act('lab-external-context'); assert.match(node('lab-external-status').textContent, /Prompt pronto/);
+  assert.equal(node('lab-local-population').hidden, true); assert.equal(node('lab-external-population').hidden, false);
+  assert.equal(stored.populationMode, 'external'); assert.equal(node('lab-external-package').hidden, false);
+  assert.match(node('lab-external-instructions').value, /Personalizza questa richiesta nell’AI esterna/);
+  assert.match(node('lab-external-instructions').value, /CREATE TABLE ditte/); assert.match(node('lab-external-instructions').value, /CREATE TABLE telefoni/);
+  assert.equal(requests.at(-1).body.includeData, true);
+  assert.match(node('lab-external-instructions').value, /Esistente/);
+  assert.match(node('lab-external-instructions').value, /non riproporli/);
+  assert.equal(lab.connectionInfo().database, 'farmacia');
+  const structure = await lab.exportDatabase(false); assert.equal(structure.includeData, false); assert.doesNotMatch(structure.sql, /Esistente/);
+  await act('lab-external-copy'); assert.match(node('lab-external-status').textContent, /copiati/);
+  const sql = "INSERT INTO ditte(nome) VALUES('Acme')"; node('lab-external-sql').value = sql; await act('lab-external-sql', 'input');
+  node('lab-population-mode').value = 'local'; panel.change({ target: { id: 'lab-population-mode', closest() {} } });
+  assert.equal(node('lab-prompt').disabled, false); assert.equal(node('lab-external-population').hidden, true);
+  node('lab-prompt').value = 'Ogni ditta deve avere almeno un telefono';
+  node('lab-population-mode').value = 'external'; panel.change({ target: { id: 'lab-population-mode', closest() {} } });
+  assert.equal(node('lab-prompt').disabled, true); assert.equal(node('lab-external-sql').disabled, false);
+  assert.equal(node('lab-external-sql').value, sql); assert.equal(node('lab-prompt').value, 'Ogni ditta deve avere almeno un telefono');
+  assert.equal(node('lab-external-execute').disabled, true);
+  await act('lab-external-form', 'submit'); assert.equal(node('lab-external-execute').disabled, false);
+  assert.match(node('lab-external-preview').innerHTML, /&lt;Acme&gt;/);
+  assert.equal(requests.at(-1).body.commit, false);
+  node('lab-external-sql').value = sql + ';'; await act('lab-external-sql', 'input'); assert.equal(node('lab-external-execute').disabled, true);
+  await act('lab-external-form', 'submit'); await act('lab-external-execute');
+  assert.equal(requests.at(-1).body.commit, true); assert.equal(requests.at(-1).body.fingerprint, 'schema-now');
+  assert.match(node('lab-external-status').textContent, /1 righe inserite/); assert.equal(node('lab-external-execute').disabled, true);
+  fail = true; await act('lab-external-form', 'submit'); assert.match(node('lab-external-status').textContent, /duplicata/);
+  assert.equal(node('lab-external-sql').value, sql + ';'); assert.equal(node('lab-external-execute').disabled, true);
+  expire = true; await act('lab-external-form', 'submit'); assert.match(node('lab-external-status').textContent, /scaduta/);
+  assert.equal(node('lab-external-sql').value, sql + ';'); assert.equal(node('lab-external-execute').disabled, true);
+  assert.ok(!requests.some(r => r.url === '/api/generate' || r.url === '/api/insert'));
+});
 test('Filters retain OR truth, distinguish NULL and expose group members and full clause names', () => {
   const context = vm.createContext({ ER });
   vm.runInContext(fs.readFileSync(require.resolve('../lab.js'), 'utf8'), context);
@@ -39,6 +154,12 @@ test('Query visualization connects compared columns, highlights phases and escap
   assert.equal((graph(result, 'select').match(/lab-graph-column active/g) || []).length, 1);
   const table = dataTable({ columns: ['<nome>'], rows: [['<script>'], [null]], truncated: true });
   assert.match(table, /&lt;script&gt;/); assert.match(table, /lab-null/); assert.match(table, /altre righe/);
+  const intermediate = { columns: ['d.id', 'd.nome', 'm.id_ditta', 'd.fax'], rows: [[1, 'Acme', 1, null]] };
+  const dimmed = dataTable(intermediate, { columnRoles: context.TramaLab.workingRoles(result), dimUnused: true });
+  assert.equal((dimmed.match(/class="lab-column-unused"/g) || []).length, 2, 'Only the unused fax header and cell are dimmed; keys and SELECT/JOIN remain visible');
+  assert.match(dimmed, /<th scope="col" class="lab-column-unused">d.fax<\/th>/);
+  assert.match(dimmed, /<td class="lab-column-unused"><span class="lab-null">NULL/);
+  assert.doesNotMatch(dataTable(intermediate), /lab-column-unused/, 'Final and source tables keep their normal appearance');
 });
 test('Generation progress arrives before completion across split UTF-8 chunks, and errors stay visible', async () => {
   const context = vm.createContext({ ER, TextDecoder });

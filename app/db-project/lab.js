@@ -26,9 +26,10 @@
     } catch (error) { await reader.cancel().catch(() => {}); throw error; }
     finally { reader.releaseLock(); }
   }
-  function dataTable(data, { columnRoles = {}, rowStates = [] } = {}) {
+  function dataTable(data, { columnRoles = {}, rowStates = [], dimUnused = false } = {}) {
     const cell = value => value === null ? '<span class="lab-null">NULL</span>' : escape(value);
-    return `<div class="lab-table-scroll"><table><thead><tr>${data.columns.map(c => `<th scope="col">${escape(c)}${Array.isArray(columnRoles[c]) && columnRoles[c].length ? `<span class="lab-column-roles">${columnRoles[c].map(escape).join(' · ')}</span>` : ''}</th>`).join('')}</tr></thead><tbody>${data.rows.map((row, i) => `<tr${rowStates[i] === 1 ? ' class="lab-row-kept"' : rowStates[i] !== undefined ? ' class="lab-row-discarded"' : ''}>${row.map(value => `<td>${cell(value)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${Math.max(1, data.columns.length)}">Nessuna riga.</td></tr>`}</tbody></table></div><p class="field-hint">${data.rows.length} righe mostrate${data.truncated ? ' · anteprima limitata: ci sono altre righe' : ''}.</p>`;
+    const unused = column => dimUnused && !columnRoles[column]?.length ? ' class="lab-column-unused"' : '';
+    return `<div class="lab-table-scroll"><table><thead><tr>${data.columns.map(c => `<th scope="col"${unused(c)}>${escape(c)}${Array.isArray(columnRoles[c]) && columnRoles[c].length ? `<span class="lab-column-roles">${columnRoles[c].map(escape).join(' · ')}</span>` : ''}</th>`).join('')}</tr></thead><tbody>${data.rows.map((row, i) => `<tr${rowStates[i] === 1 ? ' class="lab-row-kept"' : rowStates[i] !== undefined ? ' class="lab-row-discarded"' : ''}>${row.map((value, j) => `<td${unused(data.columns[j])}>${cell(value)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${Math.max(1, data.columns.length)}">Nessuna riga.</td></tr>`}</tbody></table></div><p class="field-hint">${data.rows.length} righe mostrate${data.truncated ? ' · anteprima limitata: ci sono altre righe' : ''}.</p>`;
   }
   function workingRoles(result) {
     const roles = {};
@@ -64,6 +65,10 @@
     if (step.phase === 'join') return 'JOIN ' + index;
     if (step.phase === 'group') return step.keys?.length === 0 ? 'AGGREGAZIONE' : 'GROUP BY';
     return { from: 'FROM', where: 'WHERE', having: 'HAVING', select: 'SELECT', order: 'ORDER BY', limit: 'LIMIT / OFFSET' }[step.phase] || step.phase.toUpperCase();
+  }
+  function externalInstructions(tables, database, prompt, constraints = [], snapshotSQL = '') {
+    const quote = name => '`' + name.replace(/`/g, '``') + '`';
+    return `Genera uno script MySQL per AGGIUNGERE dati al database ${quote(database)}.\n${prompt.trim()}\n\nRestituisci soltanto INSERT INTO ... (elenco delle colonne) VALUES (...), nell’ordine delle chiavi esterne. Usa valori espliciti: testi, numeri, NULL e date 'YYYY-MM-DD'. Niente CREATE, DROP, DELETE, UPDATE, SET, funzioni, variabili, INSERT IGNORE o ON DUPLICATE KEY UPDATE. Rispetta PK, FK, UNIQUE, CHECK e lunghezze dei campi. Per collegare le nuove righe usa ID espliciti coerenti, partendo dai contatori AUTO_INCREMENT indicati nello schema quando presenti; conserva i dati esistenti. Gli INSERT eventualmente riportati sotto descrivono righe GIA PRESENTI: usali come contesto e non riproporli. Massimo 500 nuove righe e 100 INSERT.\n${constraints.length ? '\nVincoli residui dello schema ER:\n' + constraints.map(c => '- ' + c).join('\n') + '\n' : ''}\nSchema completo del database collegato e dati esistenti se richiesti:\n${snapshotSQL || 'USE ' + quote(database) + ';\n\n' + tables.map(t => t.ddl.replace(/;\s*$/, '') + ';').join('\n\n')}`;
   }
   function distributionOptions(tables, physical) {
     return tables.flatMap(table => {
@@ -106,22 +111,26 @@
   }
   function mount({ panel, notify, getPhysical, onConnection }) {
     let session = '', connection = null, tables = [], result = null, activeStep = 0, busy = false, loaded = false;
-    let prefs = {}, loadedModel = '', draftConnection = '';
+    let prefs = {}, loadedModel = '', draftConnection = '', sqlCheck = null;
     let suggested = recommended, advice = [], hardware = {}, installedModels = [], adviceChosen = false, pendingModel = '';
     const rowCounts = new Map(), linkSettings = new Map();
     let options = [], planConnection = '';
     const connectionKey = config => JSON.stringify([config.host, config.port, config.database]);
     try { prefs = JSON.parse(localStorage.getItem('trama-lab-v1') || '{}'); } catch { /* Existing editor storage remains independent. */ }
     const safePref = (key, fallback) => typeof prefs[key] === 'string' ? prefs[key] : fallback;
+    const connectionPresets = { mamp: { port: 8889, user: 'root', password: 'root' }, xampp: { port: 3306, user: 'root', password: '' } };
     let physicalDatabase = safePref('physicalDatabase', '');
     panel.innerHTML = `<h2>Laboratorio delle query</h2><p>Collega un database locale, prepara dati di esempio e osserva come una SELECT combina e filtra le righe.</p>
       <p id="lab-message" class="field-hint" role="status" aria-live="polite"></p><p id="lab-error" class="error" role="alert" hidden></p>
       <details id="lab-connection" class="lab-section" open><summary>1. Connessione MySQL locale</summary>
-        <form id="lab-connect-form"><div class="lab-fields"><div><label for="lab-host">Indirizzo</label><select id="lab-host"><option>127.0.0.1</option></select></div><div><label for="lab-port">Porta</label><input id="lab-port" type="number" min="1" max="65535" value="${Number.isInteger(prefs.port) ? prefs.port : 3306}" required></div><div><label for="lab-database">Database</label><input id="lab-database" maxlength="64" value="${escape(safePref('database', ''))}" placeholder="farmacia" required></div><div><label for="lab-user">Utente</label><input id="lab-user" maxlength="128" value="${escape(safePref('user', 'root'))}" autocomplete="username" required></div><div><label for="lab-password">Password</label><input id="lab-password" type="password" maxlength="1024" autocomplete="current-password"></div></div>
+        <form id="lab-connect-form"><label for="lab-connection-preset">Configurazione rapida</label><select id="lab-connection-preset"><option value="custom">Personalizzata</option><option value="mamp">MAMP</option><option value="xampp">XAMPP</option></select><p class="field-hint">MAMP: porta 8889, utente root, password root. XAMPP: porta 3306, utente root, password vuota. Sono valori predefiniti: puoi modificarli, anche se la porta è diversa sul tuo computer.</p><div class="lab-fields"><div><label for="lab-host">Indirizzo</label><select id="lab-host"><option>127.0.0.1</option></select></div><div><label for="lab-port">Porta</label><input id="lab-port" type="number" min="1" max="65535" value="${Number.isInteger(prefs.port) ? prefs.port : 3306}" required></div><div><label for="lab-database">Database</label><input id="lab-database" maxlength="64" value="${escape(safePref('database', ''))}" placeholder="farmacia" required></div><div><label for="lab-user">Utente</label><input id="lab-user" maxlength="128" value="${escape(safePref('user', 'root'))}" autocomplete="username" required></div><div><label for="lab-password">Password</label><input id="lab-password" type="password" maxlength="1024" autocomplete="current-password"></div></div>
         <p class="field-hint">Indirizzo e porta scelgono il server, il nome sceglie il database. L’app ricorda questi parametri; la password resta nella sessione e non entra nel progetto JSON. Dopo un riavvio occorre ricollegarsi.</p><div class="lab-actions"><button class="button primary" type="submit">Collega</button><button id="lab-disconnect" class="button subtle" type="button" disabled>Scollega</button></div></form>
         <p id="lab-database-hint" class="field-hint" role="status" hidden></p><p id="lab-connected" class="lab-connected" hidden></p><div class="lab-actions"><button id="lab-prepare" class="button subtle" type="button" disabled>Crea le tabelle dallo schema fisico</button><button id="lab-refresh" class="button subtle" type="button" disabled>Aggiorna tabelle</button></div><p class="field-hint">La creazione usa lo schema SQL applicato e il database scelto qui. È disponibile solo per un database vuoto; non modifica o elimina tabelle esistenti.</p>
       </details>
-      <details id="lab-population" class="lab-section" open><summary>2. Popola con l’AI locale</summary>
+      <details id="lab-population" class="lab-section" open><summary>2. Popola il database</summary>
+        <label for="lab-population-mode">Come vuoi generare i dati?</label><select id="lab-population-mode"><option value="local">AI locale · Ollama</option><option value="external"${prefs.populationMode === 'external' ? ' selected' : ''}>AI esterna · incolla SQL</option></select>
+        <section id="lab-local-population">
+        <label for="lab-prompt">Che dati vuoi?</label><textarea id="lab-prompt" rows="3" maxlength="2000" placeholder="Dati realistici per una farmacia italiana, con medicinali a prezzi diversi e articoli venduti e non venduti.">${escape(safePref('prompt', ''))}</textarea>
         <p id="lab-hardware" class="field-hint" role="status">Verifica della RAM e del processore del computer…</p><label for="lab-model-advice">Modello da installare · suggerimento per questo computer</label><select id="lab-model-advice"><option value="${recommended}">Qwen3.5 2B · Q4_K_M · scelta leggera</option></select><p id="lab-advice-details" class="field-hint"></p><pre id="lab-model-command">ollama pull ${recommended}</pre><p class="field-hint">Q4_K_M riduce i pesi a circa 4 bit, con un compromesso tra qualità e memoria. Il contesto resta limitato a 4096 token; la RAM effettiva supera il download. L’AI genera valori; MySQL verifica i vincoli.</p>
         <details id="lab-ai-setup" class="lab-setup" open><summary>Installa e avvia l’AI locale sul tuo computer</summary>
           <p>Servono due componenti: <strong>Ollama</strong>, il programma che esegue l’AI, e <strong>Qwen</strong>, il modello da scaricare. Questa preparazione va fatta su ogni computer; il download richiede Internet.</p>
@@ -143,13 +152,16 @@
           <li><strong>Inserimento:</strong> Genera proposta prepara soltanto un’anteprima. Inserisci queste righe aggiunge i dati dopo il tuo controllo; se un inserimento fallisce, l’intero gruppo di nuove righe viene annullato (tabelle InnoDB).</li></ul>
           <p>Esempio di prompt: «Aggiungi medicinali realistici collegati alle ditte già presenti». Scegli medicinali e imposta il numero di nuove righe nel campo qui sotto.</p>
         </details>
-        <form id="lab-generate-form"><div class="lab-fields"><div><label for="lab-model">Modello installato</label><select id="lab-model"><option value="${recommended}">${recommended} · consigliato per 8 GB</option></select></div><div><label for="lab-target">Tabelle da popolare</label><select id="lab-target" disabled><option value="*">Tutte, seguendo le FK</option></select></div><div><label for="lab-count">Quantità iniziale per tabella</label><input id="lab-count" type="number" value="3" min="1" max="20" required></div></div><div id="lab-generation-plan"></div><label for="lab-prompt">Che dati vuoi?</label><textarea id="lab-prompt" rows="3" maxlength="2000" required placeholder="Dati realistici per una farmacia italiana, con medicinali a prezzi diversi e articoli venduti e non venduti.">${escape(safePref('prompt', ''))}</textarea><div class="lab-actions"><button id="lab-generate" class="button primary" type="submit" disabled>Genera proposta</button><button id="lab-ai-refresh" class="button subtle" type="button">Verifica Ollama</button></div></form>
+        <form id="lab-generate-form"><div class="lab-fields"><div><label for="lab-model">Modello installato</label><select id="lab-model"><option value="${recommended}">${recommended} · consigliato per 8 GB</option></select></div><div><label for="lab-target">Tabelle da popolare</label><select id="lab-target" disabled><option value="*">Tutte, seguendo le FK</option></select></div><div><label for="lab-count">Quantità iniziale per tabella</label><input id="lab-count" type="number" value="3" min="1" max="20" required></div></div><div id="lab-generation-plan"></div><div class="lab-actions"><button id="lab-generate" class="button primary" type="submit" disabled>Genera proposta</button><button id="lab-ai-refresh" class="button subtle" type="button">Verifica Ollama</button></div></form>
         <p id="lab-ai-status" class="field-hint" role="status"></p><p class="field-hint">Premi <strong>Genera proposta</strong>, controlla i dati, poi premi <strong>Inserisci queste righe</strong> per aggiungerli al database. I dati generati sono esempi sintetici e realistici.</p><progress id="lab-generation-progress" value="0" max="1" aria-label="Tabelle elaborate" hidden></progress><p id="lab-generation-status" class="field-hint" role="status" aria-live="polite"></p><section id="lab-draft-section" hidden><h3>Dati proposti</h3><p class="field-hint">Controlla le nuove righe; puoi modificare valori e NULL nel JSON. La proposta è già stata verificata da MySQL senza conservare righe. Questa verifica può lasciare salti nella numerazione AUTO_INCREMENT. L’inserimento aggiunge dati e conserva quelli esistenti; se fallisce, l’intero gruppo di nuove righe viene annullato (tabelle InnoDB).</p><div id="lab-draft-preview"></div><label for="lab-draft">Proposta modificabile · JSON</label><textarea id="lab-draft" rows="12" spellcheck="false"></textarea><div class="lab-actions"><button id="lab-preview" class="button subtle" type="button">Aggiorna anteprima</button><button id="lab-insert" class="button primary" type="button">Inserisci queste righe</button></div></section><p id="lab-insert-status" class="field-hint" role="status" aria-live="polite"></p>
+        </section><section id="lab-external-population" hidden><p>Prepara il prompt con lo schema completo, copialo nell’AI che preferisci, poi incolla qui il codice SQL ottenuto. Trama non contatta l’AI esterna; questo percorso funziona anche senza Ollama.</p><label class="lab-check"><input id="lab-external-data" type="checkbox" checked> Includi tutte le righe già presenti nel materiale per l’AI</label><button id="lab-external-context" class="button subtle" type="button" disabled>Prepara prompt e schema</button><section id="lab-external-package" hidden><label for="lab-external-instructions">Prompt e schema da copiare nell’AI esterna</label><textarea id="lab-external-instructions" rows="12" readonly spellcheck="false"></textarea><button id="lab-external-copy" class="button subtle" type="button">Copia prompt e schema</button></section><p class="field-hint">Sono accettati solo INSERT con valori espliciti, fino a 500 righe e 100 istruzioni. Le tabelle devono essere già create e usare InnoDB. Le FK restano attive: inserisci prima le righe referenziate. I dati presenti vengono conservati; ID duplicati richiedono una correzione dello script. I vincoli residui ER non definiti in MySQL devono essere rispettati dallo script.</p><form id="lab-external-form"><label for="lab-external-sql">SQL di popolamento generato dall’AI esterna</label><textarea id="lab-external-sql" aria-describedby="lab-external-status" rows="12" maxlength="200000" spellcheck="false" placeholder="INSERT INTO ditte (id, nome, fax) VALUES (1, 'Ditta di esempio', NULL);" required></textarea><div class="lab-actions"><button id="lab-external-check" class="button subtle" type="submit" disabled>Verifica SQL</button><button id="lab-external-execute" class="button primary" type="button" disabled>Esegui e popola il database</button></div><p id="lab-external-status" class="field-hint" role="status" aria-live="polite"></p></form><div id="lab-external-preview" hidden></div><p class="field-hint">Verifica SQL prova tutti gli INSERT e annulla le righe. Esegui e popola li inserisce in un’unica transazione: se una riga fallisce, tutto il blocco viene annullato. Una verifica può lasciare salti negli ID AUTO_INCREMENT.</p></section>
       </details>
       <section class="lab-section"><h3>3. Esegui e comprendi la query</h3><form id="lab-query-form"><label for="lab-sql">Query MySQL</label><textarea id="lab-sql" aria-describedby="lab-query-status" rows="5" spellcheck="false" placeholder="SELECT m.nome, d.nome FROM medicinali AS m JOIN ditte AS d ON m.id_ditta = d.id WHERE m.prezzo_con_prescrizione &gt; 5;">${escape(safePref('sql', ''))}</textarea><p class="field-hint">Una SELECT alla volta, con JOIN ON oppure giunzioni nel WHERE, filtri, GROUP BY, HAVING e ORDER BY. Per la spiegazione usa query senza sottoquery, CTE, UNION, USING o NATURAL JOIN.</p><div class="lab-actions"><button id="lab-query" class="button primary" type="submit" disabled>Esegui e spiega</button><button id="lab-example" class="button subtle" type="button" disabled>Proponi una giunzione</button></div><p id="lab-query-status" class="field-hint" role="status" aria-live="polite"></p></form><div id="lab-result" hidden></div></section>`;
     const $ = id => panel.querySelector('#' + id);
+    $('lab-connection-preset').value = Object.hasOwn(connectionPresets, prefs.connectionPreset) ? prefs.connectionPreset : 'custom';
+    if (connectionPresets[$('lab-connection-preset').value]) $('lab-password').value = connectionPresets[$('lab-connection-preset').value].password;
     function savePrefs() {
-      prefs = { port: Number($('lab-port').value), database: $('lab-database').value, physicalDatabase, user: $('lab-user').value, model: loadedModel || prefs.model || $('lab-model').value, prompt: $('lab-prompt').value, sql: $('lab-sql').value };
+      prefs = { port: Number($('lab-port').value), database: $('lab-database').value, physicalDatabase, user: $('lab-user').value, model: loadedModel || prefs.model || $('lab-model').value, prompt: $('lab-prompt').value, sql: $('lab-sql').value, populationMode: $('lab-population-mode').value, connectionPreset: $('lab-connection-preset').value };
       try { localStorage.setItem('trama-lab-v1', JSON.stringify(prefs)); } catch { /* Connection still works without browser storage. */ }
     }
     function syncDatabase() {
@@ -180,6 +192,13 @@
       return value;
     }
     function controls() {
+      const external = $('lab-population-mode').value === 'external';
+      $('lab-local-population').hidden = external; $('lab-external-population').hidden = !external;
+      $('lab-population-mode').disabled = busy; $('lab-prompt').disabled = busy || external;
+      ['lab-external-context', 'lab-external-check'].forEach(id => { $(id).disabled = busy || !session || !tables.length; });
+      $('lab-external-execute').disabled = busy || !session || !sqlCheck || sqlCheck.sql !== $('lab-external-sql').value || sqlCheck.connection !== connectionKey(connection);
+      $('lab-external-sql').disabled = busy; $('lab-external-copy').disabled = busy;
+      $('lab-external-data').disabled = busy;
       $('lab-connect-form').querySelectorAll('input,select').forEach(e => { e.disabled = !!session || busy; });
       $('lab-connect-form').querySelector('[type="submit"]').disabled = !!session || busy;
       ['lab-disconnect', 'lab-refresh'].forEach(id => { $(id).disabled = !session || busy; });
@@ -196,11 +215,14 @@
       if (busy) return;
       busy = true; $('lab-error').hidden = true; $('lab-message').textContent = message; controls();
       if (localStatus) { $(localStatus).className = 'field-hint'; $(localStatus).textContent = message; }
-      try { await action(); }
+      try { await action(); if ($('lab-message').textContent === message) $('lab-message').textContent = localStatus ? $(localStatus).textContent : 'Operazione completata.'; }
       catch (error) { $('lab-error').textContent = error.message; $('lab-error').hidden = false; $('lab-message').textContent = 'Operazione non completata.'; if (localStatus) { $(localStatus).className = 'error'; $(localStatus).textContent = error.message; if (!panel.hidden) $(localStatus).scrollIntoView({ behavior: 'auto', block: 'nearest' }); } }
       finally { busy = false; syncDatabase(); controls(); }
     }
     function connected(next) {
+      if (!session && connectionPresets[$('lab-connection-preset').value]) $('lab-password').value = connectionPresets[$('lab-connection-preset').value].password;
+      sqlCheck = null; $('lab-external-preview').hidden = true; $('lab-external-package').hidden = true;
+      $('lab-external-status').textContent = ''; $('lab-external-status').className = 'field-hint';
       tables = next;
       if (connection && planConnection !== connectionKey(connection)) { rowCounts.clear(); linkSettings.clear(); planConnection = connectionKey(connection); }
       $('lab-target').innerHTML = '<option value="*">Tutte, seguendo le FK</option>' + tables.map(t => `<option value="${escape(t.name)}">${escape(t.name)}</option>`).join('');
@@ -307,6 +329,40 @@
       pendingModel = installedModels.includes(suggested) ? '' : suggested;
       if (!pendingModel) { $('lab-model').value = suggested; loadedModel = suggested; savePrefs(); }
     });
+    $('lab-external-context').addEventListener('click', () => work('Preparazione del prompt e dello schema…', async () => {
+      const value = await api('export', { includeData: $('lab-external-data').checked }); connected(value.tables);
+      const physical = getPhysical(false);
+      const constraints = physical?.result.database === connection.database && physical.result.tables.every(t => tables.some(s => s.name === t.name)) ? physical.relational?.constraints || [] : [];
+      $('lab-external-instructions').value = externalInstructions(tables, connection.database, 'Popola il database con dati realistici di esempio. Personalizza questa richiesta nell’AI esterna con i dati e le quantità desiderate.', constraints, value.sql);
+      $('lab-external-package').hidden = false;
+      $('lab-external-status').className = 'field-hint'; $('lab-external-status').textContent = `Prompt pronto${value.includeData ? ' con ' + value.rowCount + ' righe già presenti' : ''}: copialo nell’AI esterna, poi incolla qui soltanto i nuovi INSERT ottenuti.`;
+    }, 'lab-external-status'));
+    $('lab-external-copy').addEventListener('click', () => work('Copia del prompt…', async () => {
+      await navigator.clipboard.writeText($('lab-external-instructions').value);
+      $('lab-external-status').textContent = 'Prompt e schema copiati.';
+    }, 'lab-external-status'));
+    $('lab-external-sql').addEventListener('input', () => {
+      sqlCheck = null; $('lab-external-preview').hidden = true; $('lab-external-status').textContent = ''; $('lab-external-status').className = 'field-hint'; controls();
+    });
+    $('lab-prompt').addEventListener('input', () => { $('lab-external-package').hidden = true; });
+    $('lab-external-form').addEventListener('submit', event => {
+      event.preventDefault(); work('Verifica del codice SQL su MySQL…', async () => {
+        sqlCheck = null; $('lab-external-preview').hidden = true;
+        const sql = $('lab-external-sql').value, value = await api('populate-sql', { sql, commit: false });
+        sqlCheck = { sql, fingerprint: value.fingerprint, connection: connectionKey(connection) };
+        $('lab-external-preview').innerHTML = '<h3>Righe da aggiungere · anteprima degli INSERT</h3>' + value.tables.map(t => `<details class="lab-source" open><summary>${escape(t.name)} · ${t.count} righe</summary>${dataTable(t.data)}</details>`).join('');
+        $('lab-external-preview').hidden = false;
+        $('lab-external-status').textContent = `${value.inserted} righe verificate in ${value.statements} INSERT. Nessuna riga conservata. Controlla l’anteprima, poi premi Esegui e popola il database.`;
+      }, 'lab-external-status');
+    });
+    $('lab-external-execute').addEventListener('click', () => work('Inserimento del codice SQL verificato…', async () => {
+      if (!sqlCheck || sqlCheck.sql !== $('lab-external-sql').value || sqlCheck.connection !== connectionKey(connection)) throw Error('Verifica prima questo SQL sul database collegato.');
+      const check = sqlCheck; sqlCheck = null;
+      const value = await api('populate-sql', { sql: check.sql, commit: true, fingerprint: check.fingerprint });
+      $('lab-external-preview').hidden = true; result = null; $('lab-result').hidden = true;
+      $('lab-external-status').textContent = `${value.inserted} righe inserite in ${connection.database}. Ora puoi eseguire le query. Per eseguire ancora lo script occorre una nuova verifica.`;
+      notify(`${value.inserted} righe inserite in ${connection.database}.`);
+    }, 'lab-external-status'));
     function draftPreview() {
       const draft = JSON.parse($('lab-draft').value);
       if (!Array.isArray(draft.tables) || draft.tables.length > 60) throw Error('Proposta JSON non valida.');
@@ -364,7 +420,7 @@
     function showResult() {
       $('lab-result').hidden = false;
       const roles = workingRoles(result);
-      const overview = result.working && result.final ? `<div class="lab-result-overview"><section><h3>${escape(result.working.label)}</h3><p class="field-hint">Tutte le colonne delle tabelle combinate, con PK, FK e clausole che le usano. ${result.steps.some(s => s.phase === 'where') ? 'WHERE ha già scelto le righe. ' : ''}GROUP BY, se presente, le raggruppa prima della proiezione SELECT.</p>${dataTable(result.working.data, { columnRoles: roles })}</section><section><h3>Tabella finale</h3><p class="field-hint">Le colonne richieste da SELECT, gli aggregati e l’eventuale ordinamento e limite.</p>${dataTable(result.final.data)}</section></div>` : '';
+      const overview = result.working && result.final ? `<div class="lab-result-overview"><section><h3>${escape(result.working.label)}</h3><p class="field-hint">Tutte le colonne delle tabelle combinate, con PK, FK e clausole che le usano. Le colonne non usate sono attenuate in grigio; PK e FK restano evidenti. ${result.steps.some(s => s.phase === 'where') ? 'WHERE ha già scelto le righe. ' : ''}GROUP BY, se presente, le raggruppa prima della proiezione SELECT.</p>${dataTable(result.working.data, { columnRoles: roles, dimUnused: true })}</section><section><h3>Tabella finale</h3><p class="field-hint">Le colonne richieste da SELECT, gli aggregati e l’eventuale ordinamento e limite.</p>${dataTable(result.final.data)}</section></div>` : '';
       $('lab-result').innerHTML = `${overview}<h3>Tabelle e colonne coinvolte</h3><p class="field-hint">Scegli un passaggio: il verde evidenzia le colonne usate in quella fase. Le linee collegano le colonne confrontate nelle giunzioni.</p><div class="lab-steps" role="group" aria-label="Passaggi logici della query">${result.steps.map((s, i) => `<button class="button subtle" type="button" data-step="${i}" aria-pressed="false">${escape(stepLabel(s, i))}</button>`).join('')}</div><div id="lab-visual"></div><ul class="lab-join-notes">${result.links.map(l => `<li><code>${escape(l.left.alias + '.' + l.left.column)} = ${escape(l.right.alias + '.' + l.right.column)}</code> · ${l.clause.toUpperCase()}</li>`).join('')}</ul><h3 id="lab-step-title"></h3><div id="lab-step-data"></div><details><summary>SQL eseguita per questo passaggio</summary><pre id="lab-step-sql"></pre></details><details id="lab-input-sql" hidden><summary>SQL della vista prima del filtro o delle righe dei gruppi</summary><pre id="lab-input-sql-text"></pre></details><p class="field-hint">${escape(result.note)}</p><details><summary>Dati delle tabelle di partenza</summary>${result.sources.map(s => `<details class="lab-source"><summary>${escape(s.name + (s.name === s.alias ? '' : ' · ' + s.alias))}</summary>${dataTable(s.sample)}</details>`).join('')}</details>`;
       showStep(result.steps.length - 1);
     }
@@ -386,6 +442,12 @@
       result = null; $('lab-result').hidden = true; $('lab-query-status').textContent = ''; $('lab-query-status').className = 'field-hint'; savePrefs();
     });
     panel.addEventListener('change', event => {
+      if (!session && !busy && event.target.id === 'lab-connection-preset') {
+        const preset = connectionPresets[$('lab-connection-preset').value];
+        if (preset) { $('lab-host').value = '127.0.0.1'; $('lab-port').value = String(preset.port); $('lab-user').value = preset.user; $('lab-password').value = preset.password; }
+      } else if (!session && !busy && ['lab-user', 'lab-password'].includes(event.target.id)) $('lab-connection-preset').value = 'custom';
+      if (event.target.id === 'lab-population-mode') controls();
+      if (event.target.id === 'lab-external-data') $('lab-external-package').hidden = true;
       if (event.target.id === 'lab-model') { loadedModel = event.target.value; pendingModel = ''; }
       if (event.target.id === 'lab-count') { tables.forEach(t => rowCounts.set(t.name, Number(event.target.value))); renderPopulation(); controls(); }
       else if (event.target.id.startsWith('lab-count-')) readPopulation();
@@ -398,11 +460,20 @@
       if (!event.target.closest('#lab-draft-section')) savePrefs();
     });
     controls();
-    return { async activate() {
+    return {
+      connectionInfo() { return session && tables.length ? { database: connection.database, tables: tables.length } : null; },
+      async exportDatabase(includeData) {
+        if (busy) throw Error('Attendi il completamento dell’operazione in corso.');
+        if (!session || !tables.length) throw Error('Collega prima il database nel Laboratorio query.');
+        let snapshot;
+        await work('Esportazione del database collegato…', async () => { snapshot = await api('export', { includeData }); });
+        if (!snapshot) throw Error($('lab-error').textContent);
+        return snapshot;
+      }, async activate() {
       syncDatabase();
       if (!busy && tables.length) { readPopulation(); renderPopulation(); controls(); }
       if (!loaded) { loaded = true; await work('Verifica del laboratorio locale…', async () => { await status(); $('lab-message').textContent = 'Scegli la connessione al tuo server MySQL.'; }); }
     } };
   }
-  root.TramaLab = { mount, graph, dataTable, readGenerationStream, distributionOptions, workingRoles, conditionView, groupView, stepLabel };
+  root.TramaLab = { mount, graph, dataTable, readGenerationStream, distributionOptions, workingRoles, conditionView, groupView, stepLabel, externalInstructions };
 })(typeof window !== 'undefined' ? window : globalThis);

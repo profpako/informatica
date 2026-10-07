@@ -128,5 +128,16 @@ GERARCHIA: Persona [PARZIALE, ESCLUSIVA, PADRE] -&gt; Studente, Docente</pre><p>
   <input type="file" id="file-input" accept=".json,application/json" hidden>
   <div id="announcement" class="sr-only" role="status" aria-live="polite"></div><div id="toast" class="toast" role="status" hidden></div>
   <dialog id="help-dialog"><div class="dialog-heading"><h2>Dal testo allo schema ER</h2><button id="close-help" class="icon-button" aria-label="Chiudi la guida"><svg class="icon"><use href="#i-close"/></svg></button></div><p>Aggiungi le entità con i loro attributi, poi crea le associazioni e indica la cardinalità di ciascun partecipante. Il disegno si aggiorna quando applichi le modifiche.</p><dl><dt>Rettangolo</dt><dd>Un’entità, come Utente o Post.</dd><dt>Rombo</dt><dd>Un’associazione, come pubblica o segue.</dd><dt>Cerchio vuoto / pieno</dt><dd>Attributo / parte dell’identificatore.</dd><dt>(0,N), (1,1)</dt><dd>Numero minimo e massimo di partecipazioni. Gli attributi opzionali o multivalore mostrano la loro cardinalità.</dd></dl><p>Trascina nodi e cerchi degli attributi per disporli. Trascina lo sfondo per spostare la vista. Usa la rotella per spostare la vista e Ctrl/⌘ + rotella per lo zoom. Seleziona un elemento e premi Invio per modificarlo, oppure usa le frecce per spostarlo (Maiusc: passo più grande).</p><p>Il progetto viene salvato in questo browser. <strong>Esporta il JSON</strong> per conservarne una copia modificabile; SVG e PNG sono immagini del disegno.</p><p class="field-hint">Gli esempi TikTok riprendono gli schemi del PDF fornito. I vincoli testuali, come “almeno una foto o un video”, non sono verificati automaticamente. Sono gestiti attributi composti e multipli, associazioni binarie anche ricorsive, gerarchie e identificatori esterni. Ristruttura conserva lo schema iniziale; Genera relazionale deduce PK e FK. Nel relazionale puoi scegliere la notazione compatta del PDF TikTok o il dettaglio delle tabelle. <strong>Genera SQL</strong> propone lo schema fisico MySQL: scegli una tabella, modifica tipi, opzioni e CHECK (una condizione per riga), poi premi <strong>Applica scelte SQL</strong>. Puoi copiare o esportare lo script; il JSON conserva anche le scelte SQL.</p></dialog>
+  <dialog id="export-dialog" aria-labelledby="export-title">
+    <div class="dialog-heading"><h2 id="export-title">Esporta</h2><button id="close-export" class="icon-button" aria-label="Chiudi esportazione"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <form id="export-form">
+      <div id="export-source-field"><label for="export-source">Struttura da esportare</label><select id="export-source"><option value="project">Schema fisico applicato nel progetto</option><option value="database">Database MySQL collegato</option></select></div>
+      <label class="lab-check"><input id="export-data" type="checkbox"> Includi il contenuto delle tabelle</label>
+      <p id="export-note" class="field-hint"></p>
+      <p class="field-hint">I dati vengono letti dal database collegato. L’esportazione completa ammette fino a 10.000 righe e 10 MB: se il limite è superato viene mostrato un errore, senza esportare dati parziali.</p>
+      <p id="export-error" class="error" role="alert" hidden></p>
+      <button id="export-download" class="button primary" type="submit">Scarica file</button>
+    </form>
+  </dialog>
 </body>
 </html>

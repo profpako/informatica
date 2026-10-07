@@ -157,7 +157,8 @@ def metadata(conn, database):
             name = raw['TABLE_NAME']
             cur.execute('SHOW FULL COLUMNS FROM ' + quote(name))
             columns = [dict(name=c['Field'], type=c['Type'], nullable=c['Null'] == 'YES',
-                            key=c['Key'], auto='auto_increment' in c['Extra'], default=c['Default']) for c in cur.fetchall()]
+                            key=c['Key'], auto='auto_increment' in c['Extra'], default=c['Default'],
+                            generated=any(kind in c['Extra'] for kind in ('VIRTUAL GENERATED', 'STORED GENERATED'))) for c in cur.fetchall()]
             if len(columns) > 120:
                 raise ValueError(f'{name}: troppe colonne per il laboratorio.')
             cur.execute('SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME, REFERENCED_TABLE_SCHEMA FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s AND REFERENCED_TABLE_NAME IS NOT NULL ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION', (database, name))
@@ -627,6 +628,12 @@ def text_limit(sql_type):
     return int(match[1]) if match else None
 
 
+def check_text_length(column, value, context):
+    maximum = text_limit(column['type'])
+    if value is not None and maximum is not None and len(str(value)) > maximum:
+        raise ValueError(f'{context}: testo troppo lungo ({len(str(value))} caratteri; massimo {maximum} per {column["type"]}). Usa un formato più compatto oppure amplia la colonna nel database. Il valore non viene troncato.')
+
+
 def validate_rows(table, rows, count=None):
     if not isinstance(rows, list) or not 1 <= len(rows) <= 20 or count is not None and len(rows) != count:
         raise ValueError(f'{table["name"]}: servono da 1 a 20 righe (esattamente {count} per la generazione).')
@@ -652,9 +659,7 @@ def validate_rows(table, rows, count=None):
                         raise decimal.InvalidOperation()
                 except decimal.InvalidOperation as error:
                     raise ValueError(context + ': serve un numero.') from error
-            maximum = text_limit(kind)
-            if maximum is not None and len(str(value)) > maximum:
-                raise ValueError(f'{context}: testo troppo lungo ({len(str(value))} caratteri; massimo {maximum} per {column["type"]}).')
+            check_text_length(column, value, context)
             if isinstance(value, str) and len(value) > 10000:
                 raise ValueError(context + ': massimo 10000 caratteri per valore nel laboratorio.')
     return rows
@@ -781,6 +786,160 @@ def generate(config, selected, count, prompt, model, progress=None, distribution
         AI_LOCK.release()
 
 
+def export_database(config, include_data=False):
+    if type(include_data) is not bool:
+        raise ValueError('Opzione di esportazione non valida.')
+    with connect(config) as conn:
+        tables = metadata(conn, config['database']); conn.rollback(); readonly(conn)
+        sql = ['-- Struttura' + (' e dati esistenti' if include_data else '') + ' del database collegato',
+               'CREATE DATABASE IF NOT EXISTS ' + quote(config['database']) + ';', 'USE ' + quote(config['database']) + ';']
+        constraints = []; inserts = []; total = 0
+        with conn.cursor() as cur:
+            for table in tables:
+                definition = parse_sql(table['ddl'])[0]
+                schema = definition.this
+                # Defer FKs until all tables and rows exist; also exports cyclic schemas without disabling checks.
+                for constraint in schema.expressions:
+                    if constraint.find(exp.ForeignKey):
+                        constraints.append('ALTER TABLE ' + quote(table['name']) + ' ADD ' + constraint.sql(dialect='mysql', comments=False) + ';')
+                schema.set('expressions', [c for c in schema.expressions if not c.find(exp.ForeignKey)])
+                sql.append(definition.sql(dialect='mysql', comments=False) + ';')
+                if include_data:
+                    cur.execute('SELECT * FROM ' + quote(table['name']) + ' LIMIT ' + str(10001 - total))
+                    rows = cur.fetchall(); total += len(rows)
+                    if total > 10000:
+                        raise ValueError('L’esportazione completa supera 10.000 righe. Nessun file parziale prodotto.')
+                    columns = [c['name'] for c in table['columns']]
+                    table['rows'] = [dict(zip(columns, plain(row))) for row in rows]
+                    writable = [i for i, c in enumerate(table['columns']) if not c['generated']]
+                    for row in rows:
+                        cells = ["X'" + row[i].hex() + "'" if isinstance(row[i], bytes) else conn.escape(row[i]) for i in writable]
+                        inserts.append('INSERT INTO ' + quote(table['name']) + ' (' + ', '.join(quote(columns[i]) for i in writable) + ') VALUES (' + ', '.join(cells) + ');')
+                    if len(json.dumps(tables, default=json_value).encode()) + sum(len(s.encode()) for s in inserts) > 10000000:
+                        raise ValueError('L’esportazione completa supera 10 MB. Nessun file parziale prodotto.')
+        conn.rollback()
+    if inserts:
+        sql += ['-- Righe già presenti', 'START TRANSACTION;', *inserts, 'COMMIT;']
+    sql += constraints
+    return dict(format='trama-database-v1', database=config['database'], includeData=include_data, rowCount=total,
+                encodings=dict(decimal='string', binary='hex'), tables=tables, sql='\n\n'.join(sql) + '\n')
+
+
+def population_inserts(script, tables, database):
+    if not isinstance(script, str) or not script.strip() or len(script) > 200000:
+        raise ValueError('Incolla SQL di popolamento di massimo 200.000 caratteri.')
+    # Accept the single SQL fence often returned by a chat, without altering SQL string contents.
+    script = re.sub(r'^```(?:sql|mysql)?\s*\n([\s\S]*?)\n```$', r'\1', script.strip(), flags=re.I)
+    statements = parse_sql(script)
+    if len(statements) > 100:
+        raise ValueError('Sono ammesse fino a 100 istruzioni e 500 righe per blocco.')
+    items = []; total = 0
+    for index, statement in enumerate(statements, 1):
+        if isinstance(statement, exp.Use):
+            if statement.this.name != database or statement.this.db or statement.this.catalog:
+                raise ValueError('USE deve riferire il database collegato.')
+            continue
+        if isinstance(statement, (exp.Transaction, exp.Commit)) and not any(statement.args.values()):
+            continue  # The application owns the single transaction, including pasted wrappers.
+        if not isinstance(statement, exp.Insert) or any(v for k, v in statement.args.items() if k not in {'this', 'expression'}):
+            raise ValueError(f'Istruzione {index}: usa solo INSERT INTO ... VALUES, senza IGNORE, aggiornamenti o comandi di struttura.')
+        target = statement.this
+        node = target.this if isinstance(target, exp.Schema) else target
+        if not isinstance(node, exp.Table) or not isinstance(node.this, exp.Identifier) or node.catalog or node.db and node.db != database or node.args.get('alias'):
+            raise ValueError(f'Istruzione {index}: la tabella deve appartenere al database collegato.')
+        table = table_named(tables, node.name)
+        if table['engine'] != 'InnoDB':
+            raise ValueError(f'{table["name"]}: serve InnoDB per annullare tutto il blocco se un inserimento fallisce.')
+        fields = target.expressions if isinstance(target, exp.Schema) else []
+        if any(not isinstance(c, exp.Identifier) for c in fields):
+            raise ValueError(f'Istruzione {index}: elenco di colonne non valido.')
+        columns = [c.name for c in fields] if fields else [c['name'] for c in table['columns']]
+        if not columns or len(set(columns)) != len(columns) or any(c not in {f['name'] for f in table['columns']} for c in columns):
+            raise ValueError(f'{table["name"]}: colonne sconosciute o ripetute.')
+        values = statement.expression
+        if not isinstance(values, exp.Values) or not values.expressions:
+            raise ValueError(f'Istruzione {index}: servono valori espliciti, senza SELECT o sottoquery.')
+        rows = []
+        for row in values.expressions:
+            if not isinstance(row, exp.Tuple) or len(row.expressions) != len(columns):
+                raise ValueError(f'{table["name"]}: il numero di valori deve corrispondere alle colonne.')
+            cells = []
+            for value in row.expressions:
+                if isinstance(value, exp.Null):
+                    cells.append(None)
+                elif isinstance(value, exp.Boolean):
+                    cells.append(int(value.this))
+                elif isinstance(value, exp.Literal) and value.is_string:
+                    cells.append(value.this)
+                else:
+                    sign = '-' if isinstance(value, exp.Neg) else ''
+                    number = value.this if sign else value
+                    if not isinstance(number, exp.Literal) or number.is_string:
+                        raise ValueError(f'{table["name"]}: usa solo testi, numeri, TRUE/FALSE e NULL; date come testi YYYY-MM-DD. Funzioni e variabili non sono ammesse.')
+                    parsed = decimal.Decimal(sign + number.this)
+                    if not parsed.is_finite():
+                        raise ValueError('Valore numerico non valido.')
+                    cells.append(int(parsed) if number.is_int else str(parsed))
+            rows.append(dict(zip(columns, cells)))
+        total += len(rows)
+        if total > 500:
+            raise ValueError('Sono ammesse fino a 500 righe per blocco.')
+        items.append(dict(name=table['name'], columns=columns, rows=rows))
+    if not items:
+        raise ValueError('Lo script non contiene INSERT.')
+    return items
+
+
+def populate_sql(config, script, commit=False, expected=None):
+    if type(commit) is not bool:
+        raise ValueError('Opzione di esecuzione non valida.')
+    with connect(config) as conn:
+        tables = metadata(conn, config['database']); signature = fingerprint(tables)
+        if commit and expected != signature:
+            raise ValueError('Verifica di nuovo il codice SQL: lo schema è cambiato o manca la verifica.')
+        items = population_inserts(script, tables, config['database'])
+        conn.rollback()
+        result = write_rows(conn, tables, items, [], commit)
+    return {**result, 'fingerprint': signature, 'statements': len(items),
+            'tables': [dict(name=item['name'], data=dict(columns=item['columns'], rows=[list(row.values()) for row in item['rows'][:12]], truncated=len(item['rows']) > 12), count=len(item['rows'])) for item in items]}
+
+
+def write_rows(conn, tables, items, rules, commit):
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SET SESSION sql_mode=CONCAT_WS(',', @@sql_mode, 'STRICT_ALL_TABLES')")
+            conn.begin()
+            total = 0
+            for index, item in enumerate(items, 1):
+                table = table_named(tables, item['name'])
+                columns = item.get('columns') or [c['name'] for c in table['columns']]
+                statement = 'INSERT INTO ' + quote(item['name']) + ' (' + ', '.join(map(quote, columns)) + ') VALUES (' + ', '.join(['%s'] * len(columns)) + ')'
+                for row_index, row in enumerate(item['rows'], 1):
+                    try:
+                        for column in table['columns']:
+                            if column['name'] in row:
+                                check_text_length(column, row[column['name']], column['name'])
+                        cur.execute(statement, [row[c] for c in columns])
+                        if cur.warning_count:
+                            raise ValueError('MySQL ha segnalato una conversione o un vincolo non applicato.')
+                    except (pymysql.MySQLError, ValueError) as error:
+                        raise ValueError(f'Inserimento {index}, {item["name"]}, riga {row_index}: {error}. Nessuna nuova riga inserita.') from error
+                    total += 1
+            for rule in rules:
+                table = table_named(tables, rule['table']); fk = table['foreignKeys'][0]
+                for row in linked_counts(cur, table, fk):
+                    if not rule['min'] <= row[-1] <= rule['max']:
+                        raise ValueError(f'{table["name"]}: {fk["target"]} {row[:-1]} ha {row[-1]} collegamenti; ne servono da {rule["min"]} a {rule["max"]}. Nessuna nuova riga inserita.')
+        if commit:
+            conn.commit()
+        else:
+            conn.rollback()
+    except Exception:
+        conn.rollback()
+        raise
+    return dict(inserted=total)
+
+
 def insert(config, draft, commit=True):
     if not isinstance(draft, dict) or not isinstance(draft.get('tables'), list) or not 1 <= len(draft['tables']) <= 60:
         raise ValueError('Proposta di dati non valida.')
@@ -789,38 +948,15 @@ def insert(config, draft, commit=True):
         if draft.get('fingerprint') != fingerprint(tables):
             raise ValueError('Lo schema del database è cambiato. Genera nuovamente la proposta.')
         rules = distribution_rules(tables, draft.get('distributions'), config['database'])
-        names = set(); total = 0
+        names = set()
         # Validate the whole proposal before starting any INSERT.
         for item in draft['tables']:
             table = table_named(tables, item.get('name'))
             if table['name'] in names or table['engine'] != 'InnoDB':
                 raise ValueError('Servono tabelle InnoDB distinte, per annullare tutti gli inserimenti in caso di errore.')
-            names.add(table['name']); validate_rows(table, item.get('rows')); total += len(item['rows'])
+            names.add(table['name']); validate_rows(table, item.get('rows'))
         conn.rollback()
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SET SESSION sql_mode=CONCAT_WS(',', @@sql_mode, 'STRICT_ALL_TABLES')")
-                conn.begin()
-                for item in draft['tables']:
-                    columns = [c['name'] for c in table_named(tables, item['name'])['columns']]
-                    statement = 'INSERT INTO ' + quote(item['name']) + ' (' + ', '.join(map(quote, columns)) + ') VALUES (' + ', '.join(['%s'] * len(columns)) + ')'
-                    for row in item['rows']:
-                        cur.execute(statement, [row[c] for c in columns])
-                        if cur.warning_count:
-                            raise ValueError('MySQL ha segnalato una conversione o un vincolo non applicato. Nessuna riga inserita.')
-                for rule in rules:
-                    table = table_named(tables, rule['table']); fk = table['foreignKeys'][0]
-                    for row in linked_counts(cur, table, fk):
-                        if not rule['min'] <= row[-1] <= rule['max']:
-                            raise ValueError(f'{table["name"]}: {fk["target"]} {row[:-1]} ha {row[-1]} collegamenti; ne servono da {rule["min"]} a {rule["max"]}. Nessuna nuova riga inserita.')
-            if commit:
-                conn.commit()
-            else:
-                conn.rollback()
-        except Exception:
-            conn.rollback()
-            raise
-    return dict(inserted=total)
+        return write_rows(conn, tables, draft['tables'], rules, commit)
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -940,6 +1076,10 @@ class Handler(SimpleHTTPRequestHandler):
                     result = generate(config, raw.get('table'), raw.get('count'), raw.get('prompt'), raw.get('model'), distributions=raw.get('distributions'))
                 elif self.path == '/api/insert':
                     result = insert(config, raw.get('draft'))
+                elif self.path == '/api/populate-sql':
+                    result = populate_sql(config, raw.get('sql'), raw.get('commit', False), raw.get('fingerprint'))
+                elif self.path == '/api/export':
+                    result = export_database(config, raw.get('includeData', False))
                 elif self.path == '/api/query':
                     result = execute_query(config, raw.get('sql'))
                 else:

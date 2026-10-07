@@ -28,9 +28,11 @@ select,.field-pair select{appearance:none;padding-right:32px;background-image:ur
 @media print{#lab-connect-form,#lab-generate-form,#lab-query-form,.lab-setup,.lab-actions,#lab-draft,.lab-steps{display:none!important}.lab-section{break-inside:avoid}.lab-table-scroll,.lab-graph-scroll{overflow:visible}.lab-graph{min-width:0!important}.lab-panel{max-width:none}}
 
 .lab-graph-pending{opacity:.35}
+.lab-table-scroll td.lab-column-unused{background:#ddd;color:#5d5d5d}.lab-table-scroll th.lab-column-unused{background:#ccc;color:#545454}
 .lab-row-kept td,.lab-row-discarded td{white-space:nowrap}
 .lab-result-overview{display:grid;grid-template-columns:minmax(0,2fr) minmax(240px,1fr);gap:20px;margin:24px 0}.lab-result-overview>section{min-width:0}.lab-column-roles{display:block;font:10px/1.6 system-ui,sans-serif;white-space:normal;color:var(--accent)}.lab-row-kept{background:#e5f2e9}.lab-row-discarded{background:#f0f0ed;color:#646760}.lab-condition-list{padding-left:24px;overflow-wrap:anywhere}.lab-result-overview .lab-table-scroll,#lab-step-data .lab-table-scroll{max-height:420px}.lab-group-list{max-height:560px;overflow:auto}.lab-group{margin:8px 0}#lab-step-data h4{margin:20px 0 8px;font-size:14px}
 @media(max-width:760px){.lab-result-overview{grid-template-columns:minmax(0,1fr)}}
 @media print{.lab-group-list,.lab-result-overview .lab-table-scroll,#lab-step-data .lab-table-scroll{max-height:none;overflow:visible}}
-#lab-generation-plan input[type="checkbox"]{width:16px;height:16px;margin:0 7px 0 0;accent-color:var(--accent);vertical-align:middle}#lab-generation-plan fieldset{min-width:0}#lab-generation-plan legend{font-weight:600;overflow-wrap:anywhere}
+#lab-generation-plan input[type="checkbox"],.lab-check input{width:16px;height:16px;margin:0 7px 0 0;accent-color:var(--accent);vertical-align:middle}#lab-generation-plan fieldset{min-width:0}#lab-generation-plan legend{font-weight:600;overflow-wrap:anywhere}
+#export-dialog label{display:block;margin:18px 0 8px;font-size:13px}#export-dialog .field-hint{line-height:1.7}
 #lab-generation-progress{display:block;width:100%;height:12px;accent-color:var(--accent);margin:16px 0 8px}#lab-generation-status:not(:empty){border-left:3px solid var(--accent);padding:10px 12px;background:var(--accent-soft);font-weight:600}#lab-generation-status.error{border-left-color:var(--error);background:#fbefed}
