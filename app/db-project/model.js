@@ -536,7 +536,11 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
     }
     return side;
   }
-  function render(model, selected = '') {
+  function displayOptions(raw) {
+    return { cardinalityStyle: ['university', 'uml', 'both'].includes(raw?.cardinalityStyle) ? raw.cardinalityStyle : 'university', showRelationshipType: raw?.showRelationshipType === true };
+  }
+  function render(model, selected = '', display = {}) {
+    const options = displayOptions(display);
     const nodes = [...model.entities, ...model.relationships];
     let edges = '', shapes = '', bounds = [];
     const occupiedLabels = nodes.flatMap(nodeBoxes);
@@ -559,6 +563,15 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
       const labelBox = { left: lx, right: lx + textWidth(label, 15), top: ly - 20, bottom: ly + 8 };
       occupiedLabels.push(labelBox);
       edges += '</g>'; bounds.push(p, { x: junction.x, y: p.y }, { x: labelBox.right, y: labelBox.bottom });
+    });
+    if (options.showRelationshipType) model.relationships.forEach(r => {
+      const many = r.ends.filter(end => end.cardinality.endsWith('N')).length;
+      const label = ['1:1', '1:N', 'N:M'][many], top = nodeBounds(r).top;
+      const box = { left: r.x - 28, right: r.x + 28, top: top - 38, bottom: top - 12 };
+      while (occupiedLabels.some(b => box.right + 6 > b.left && box.left < b.right + 6 && box.bottom + 6 > b.top && box.top < b.bottom + 6)) { box.top -= 36; box.bottom -= 36; }
+      occupiedLabels.push(box);
+      bounds.push({ x: box.left, y: box.top }, { x: box.right, y: box.bottom });
+      shapes += `<g class="relationship-type" aria-label="Tipo di associazione ${escape(r.name)}: ${label}"><rect x="${box.left}" y="${box.top}" width="56" height="26" rx="4"/><text x="${r.x}" y="${box.top + 18}" text-anchor="middle">${label}</text></g>`;
     });
     // ponytail: separate lanes per entity side; add obstacle-aware routing if dense schemas need automatic avoidance.
     const ports = new Map();
@@ -622,7 +635,11 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
           }
         }
       }
-      const labelWidths = [textWidth(`(${end.cardinality})`), ...(end.role ? [textWidth(end.role, 15)] : [])];
+      const labelsToDraw = [];
+      if (options.cardinalityStyle !== 'uml') labelsToDraw.push({ text: `(${end.cardinality})`, className: 'cardinality', size: 17 });
+      if (options.cardinalityStyle !== 'university') labelsToDraw.push({ text: `${options.cardinalityStyle === 'both' ? 'UML ' : ''}${r.ends[1 - index].cardinality.slice(-1)}`, className: 'cardinality cardinality-uml', size: 17 });
+      if (end.role) labelsToDraw.push({ text: end.role, className: 'role', size: 15 });
+      const labelWidths = labelsToDraw.map(label => textWidth(label.text, label.size));
       const labelBoxes = p => labelWidths.map((width, i) => {
         const left = p.x - (p.align === 'middle' ? width / 2 : p.align === 'end' ? width : 0), y = p.y + i * 32;
         return { left: left - 4, right: left + width + 4, top: y - 22, bottom: y + 8 };
@@ -636,10 +653,8 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
       const { x: lx, y: ly, align } = position;
       const labels = labelBoxes(position); occupiedLabels.push(...labels);
       labels.forEach(b => bounds.push({ x: b.left, y: b.top }, { x: b.right, y: b.bottom }));
-      edges += `<polyline class="connection" points="${points.map(p => `${p.x},${p.y}`).join(' ')}"/><text class="cardinality" x="${lx}" y="${ly}" text-anchor="${align}">(${end.cardinality})</text>`;
-      if (end.role) {
-        edges += `<text class="role" x="${lx}" y="${ly + 32}" text-anchor="${align}">${escape(end.role)}</text>`;
-      }
+      edges += `<polyline class="connection" points="${points.map(p => `${p.x},${p.y}`).join(' ')}"/>`;
+      labelsToDraw.forEach((label, i) => { edges += `<text class="${label.className}" x="${lx}" y="${ly + i * 32}" text-anchor="${align}">${escape(label.text)}</text>`; });
     }));
     nodes.forEach(node => {
       const relationship = !!node.ends, { w, h } = dimensions(node, relationship);
@@ -664,12 +679,12 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
     const width = Math.max(300, Math.max(...bounds.map(p => p.x)) - minX + 65), height = Math.max(250, Math.max(...bounds.map(p => p.y)) - minY + 65);
     return { markup: edges + shapes, bounds: { x: minX, y: minY, w: width, h: height } };
   }
-  const svgStyle = `.isa-arrow{fill:#fff;stroke:#53666b;stroke-width:1.6}.connection,.attribute-line{fill:none;stroke:#53666b;stroke-width:1.6;stroke-linejoin:round}.entity rect{fill:#fff;stroke:#23594f;stroke-width:2}.relationship polygon{fill:#fff;stroke:#53666b;stroke-width:1.8}.diagram-node text{font:600 20px "Avenir Next",Arial,sans-serif;fill:#203532}.attribute-dot{fill:#fff;stroke:#364d48;stroke-width:1.6}.attribute-dot.key{fill:#203532}.attribute-hit{fill:transparent}.attribute-label{font:17px "Avenir Next",Arial,sans-serif;fill:#334642}.cardinality{font:600 17px "Avenir Next",Arial,sans-serif;fill:#203532;paint-order:stroke;stroke:#fff;stroke-width:6px;stroke-linejoin:round}.role{font:italic 15px "Avenir Next",Arial,sans-serif;fill:#4a605a;paint-order:stroke;stroke:#fff;stroke-width:5px}.selected rect,.selected polygon{stroke:#067e63;stroke-width:3}.diagram-node,.attribute{cursor:grab}.diagram-node:focus rect,.diagram-node:focus polygon{stroke:#067e63;stroke-width:3}`;
-  function svg(model) {
-    const { markup, bounds: b } = render(model);
+  const svgStyle = `.isa-arrow{fill:#fff;stroke:#53666b;stroke-width:1.6}.connection,.attribute-line{fill:none;stroke:#53666b;stroke-width:1.6;stroke-linejoin:round}.entity rect{fill:#fff;stroke:#23594f;stroke-width:2}.relationship polygon{fill:#fff;stroke:#53666b;stroke-width:1.8}.diagram-node text{font:600 20px "Avenir Next",Arial,sans-serif;fill:#203532}.attribute-dot{fill:#fff;stroke:#364d48;stroke-width:1.6}.attribute-dot.key{fill:#203532}.attribute-hit{fill:transparent}.attribute-label{font:17px "Avenir Next",Arial,sans-serif;fill:#334642}.cardinality{font:600 17px "Avenir Next",Arial,sans-serif;fill:#203532;paint-order:stroke;stroke:#fff;stroke-width:6px;stroke-linejoin:round}.role{font:italic 15px "Avenir Next",Arial,sans-serif;fill:#4a605a;paint-order:stroke;stroke:#fff;stroke-width:5px}.selected rect,.selected polygon{stroke:#067e63;stroke-width:3}.diagram-node,.attribute{cursor:grab}.diagram-node:focus rect,.diagram-node:focus polygon{stroke:#067e63;stroke-width:3}.cardinality-uml{fill:#245d85}.relationship-type rect{fill:#f8faf8;stroke:#a6b7ad;stroke-width:1}.relationship-type text{font:600 14px "Avenir Next",Arial,sans-serif;fill:#334642}`;
+  function svg(model, display = {}) {
+    const { markup, bounds: b } = render(model, '', display);
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(b.w)}" height="${Math.ceil(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}" role="img" aria-label="${escape(model.title)}"><title>${escape(model.title)}</title><style>${svgStyle}</style><rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="white"/>${markup}</svg>`;
   }
-  const api = { cards, uid, copy, escape, attributes, attributeText, attributeEntries, validate, parse, serialize, layout, example, render, svg, svgStyle, attributePosition, attributeSide, nodeBounds };
+  const api = { cards, uid, copy, escape, attributes, attributeText, attributeEntries, validate, parse, serialize, layout, example, render, svg, svgStyle, displayOptions, attributePosition, attributeSide, nodeBounds };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ER = api;
 })(globalThis);

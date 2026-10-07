@@ -6,6 +6,7 @@ const history = [], future = [];
 let model = ER.example(), selected = '', editing = null, formDirty = false, textDirty = false;
 let derived = null, stage = 'initial';
 let relationalView = 'compact';
+let display = ER.displayOptions();
 let physicalTableId = '';
 let view = { x: 0, y: 0, w: 1000, h: 700 }, drag = null, toastTimer, storageAvailable = true;
 let draftText = '', firstResize = true, lastCanvasSize = { w: 0, h: 0 };
@@ -17,6 +18,7 @@ try {
     derived = readDerived(record.derived);
     stage = record.stage === 'lab' ? 'lab' : record.stage === 'physical' && derived?.physical ? 'physical' : record.stage === 'relational' && derived?.relational ? 'relational' : record.stage === 'restructured' && derived ? 'restructured' : 'initial';
     relationalView = record.relationalView === 'tables' ? 'tables' : 'compact';
+    display = ER.displayOptions(record.display);
     draftText = typeof record.draft === 'string' && record.draft.length <= 1000000 ? record.draft : '';
     textDirty = !!draftText && draftText !== ER.serialize(model);
   }
@@ -47,7 +49,7 @@ function diagramModel() {
   if (node) Object.assign(node, { side: editing.side, attributes: editing.previewAttributes, attributeSides: editing.attributeSides, attributePositions: editing.attributePositions });
   return preview;
 }
-const snapshot = () => ER.copy({ model, derived, stage });
+const snapshot = () => ER.copy({ model, derived, stage, display });
 const diagramStage = () => stage === 'initial' || stage === 'restructured';
 function remember() { history.push(snapshot()); if (history.length > 60) history.shift(); future.length = 0; }
 
@@ -58,7 +60,7 @@ function notify(message) {
 }
 function persist() {
   if (storageAvailable) {
-    try { localStorage.setItem(storageKey, JSON.stringify({ model, derived, stage, relationalView, draft: $('schema-text').value })); }
+    try { localStorage.setItem(storageKey, JSON.stringify({ model, derived, stage, relationalView, display, draft: $('schema-text').value })); }
     catch { storageAvailable = false; notify('Memoria locale non disponibile. Esporta il JSON per salvare il progetto.'); }
   }
   $('save-status').textContent = storageAvailable ? textDirty ? 'Bozza di testo salvata · da generare' : 'Salvato in questo browser' : 'Esporta il JSON per salvare';
@@ -66,7 +68,7 @@ function persist() {
 }
 function boundsView() {
   if (!diagramStage()) return;
-  const b = ER.render(diagramModel()).bounds, rect = $('canvas').getBoundingClientRect();
+  const b = ER.render(diagramModel(), '', display).bounds, rect = $('canvas').getBoundingClientRect();
   const scale = Math.max(b.w / Math.max(1, rect.width - 60), b.h / Math.max(1, rect.height - 75));
   view = { x: b.x + b.w / 2 - rect.width * scale / 2, y: b.y + b.h / 2 - rect.height * scale / 2, w: rect.width * scale, h: rect.height * scale };
   lastCanvasSize = { w: rect.width, h: rect.height };
@@ -81,7 +83,7 @@ function updateView() {
 }
 function draw() {
   const active = shownModel();
-  $('diagram-content').innerHTML = ER.render(diagramModel(), selected).markup;
+  $('diagram-content').innerHTML = ER.render(diagramModel(), selected, display).markup;
   $('diagram-title').textContent = model.title + (stage === 'initial' ? ' · ER iniziale' : ' · ER ristrutturato');
   $('project-title').value = model.title;
   document.title = `${model.title} · Trama ER`;
@@ -90,6 +92,13 @@ function draw() {
   $('schema-counts').textContent = `${active.entities.length} entità · ${active.relationships.length} associazioni${active.hierarchies?.length ? ` · ${active.hierarchies.length} gerarchie` : ''}`;
   document.querySelector('.canvas-title span:nth-child(2)').textContent = stage === 'lab' ? 'Laboratorio delle query' : stage === 'physical' ? 'Schema fisico MySQL' : stage === 'relational' ? 'Schema relazionale' : 'Schema concettuale';
   document.querySelector('.notation').hidden = !diagramStage(); document.querySelector('.legend').hidden = !diagramStage();
+  document.querySelector('.notation').textContent = { university: 'ER universitario', uml: 'ER · UML style', both: 'ER · entrambe' }[display.cardinalityStyle];
+  $('display-menu').hidden = !diagramStage();
+  $('cardinality-style').value = display.cardinalityStyle;
+  $('show-relationship-type').checked = display.showRelationshipType;
+  const displayHint = display.cardinalityStyle === 'university' ? 'Le coppie (min,max) indicano le partecipazioni dell’entità vicina.' : 'Le massime UML (1 o N), in blu, si leggono rispetto all’altro partecipante.';
+  $('display-hint').textContent = displayHint + ' Cambia solo la visualizzazione.';
+  $('cardinality-definition-hint').textContent = 'Definisci sempre minimo e massimo delle partecipazioni di ciascuna entità. ' + displayHint;
   document.querySelector('.drawing-area').setAttribute('aria-label', stage === 'physical' ? 'Schema fisico MySQL' : stage === 'relational' ? 'Schema relazionale' : 'Schema ER');
   if (stage === 'relational') $('schema-counts').textContent = `${derived.relational.tables.length} relazioni`;
   if (stage === 'physical') $('schema-counts').textContent = `${derived.physical.tables.length} tabelle · MySQL`;
@@ -448,13 +457,13 @@ $('project-title').addEventListener('change', () => {
   try { commit({ ...ER.copy(model), title: $('project-title').value.trim() }); }
   catch (error) { $('project-title').value = model.title; notify(error.message); }
 });
-function replaceProject(next, importedDerived = null) {
+function replaceProject(next, importedDerived = null, importedDisplay = null) {
   if (!formCanClose()) return false;
   if ((model.entities.length || textDirty) && !confirm('Vuoi sostituire lo schema corrente? La bozza di testo verrà sostituita. Esporta il JSON se vuoi conservarne una copia; lo schema attuale resta disponibile con Annulla.')) return false;
   closeEditor(false); textDirty = false; selected = '';
   if (JSON.stringify(next) === JSON.stringify(model)) remember();
   commit(next, true);
-  derived = importedDerived; stage = 'initial'; draw(); boundsView();
+  derived = importedDerived; display = ER.displayOptions(importedDisplay); stage = 'initial'; draw(); boundsView();
   $('schema-text').value = ER.serialize(model); persist(); tab('structure', false); return true;
 }
 $('new-project').addEventListener('click', () => { if (replaceProject({ version: 1, title: 'Nuovo schema', entities: [], relationships: [] })) notify('Nuovo progetto. Aggiungi la prima entità.'); });
@@ -467,13 +476,19 @@ function travel(redo) {
   if (!closeEditor()) return;
   const from = redo ? future : history, to = redo ? history : future;
   if (!from.length) return;
-  to.push(snapshot()); const previous = from.pop(); model = previous.model; derived = previous.derived; stage = previous.stage; selected = '';
+  to.push(snapshot()); const previous = from.pop(); model = previous.model; derived = previous.derived; stage = previous.stage; display = ER.displayOptions(previous.display); selected = '';
   if (!textDirty) $('schema-text').value = ER.serialize(model);
   draw(); persist(); boundsView(); notify(redo ? 'Operazione ripristinata.' : 'Operazione annullata.');
 }
 $('undo').addEventListener('click', () => travel(false)); $('redo').addEventListener('click', () => travel(true));
 $('auto-layout').addEventListener('click', () => { if (formCanClose()) { closeEditor(false); commit(ER.layout(ER.copy(shownModel())), true, stage === 'restructured'); notify('Schema bilanciato, compresi i lati degli attributi. Puoi annullare o correggere le posizioni.'); } });
 $('fit').addEventListener('click', boundsView);
+$('display-menu').addEventListener('change', () => {
+  display = ER.displayOptions({ cardinalityStyle: $('cardinality-style').value, showRelationshipType: $('show-relationship-type').checked });
+  draw(); persist(); boundsView();
+});
+$('display-menu').addEventListener('keydown', event => { if (event.key === 'Escape') { $('display-menu').open = false; $('display-menu').querySelector('summary').focus(); } });
+document.addEventListener('click', event => { if (!event.target.closest('#display-menu')) $('display-menu').open = false; });
 function zoom(factor, point) {
   const rect = $('canvas').getBoundingClientRect();
   const current = rect.width / view.w, next = Math.max(.08, Math.min(3, current * factor));
@@ -510,7 +525,7 @@ $('diagram').addEventListener('pointermove', event => {
     const x = drag.origin.x + dx, y = drag.origin.y + dy;
     if (drag.attribute != null) node.attributePositions[drag.attribute] = { x: Math.max(-5000, Math.min(5000, x - node.x)), y: Math.max(-5000, Math.min(5000, y - node.y)) };
     else { node.x = Math.max(-50000, Math.min(50000, x)); node.y = Math.max(-50000, Math.min(50000, y)); }
-    $('diagram-content').innerHTML = ER.render(active, selected).markup;
+    $('diagram-content').innerHTML = ER.render(active, selected, display).markup;
   } else { view.x = drag.view.x - dx; view.y = drag.view.y - dy; updateView(); }
 });
 function finishDrag(event) {
@@ -580,7 +595,7 @@ $('file-input').addEventListener('change', async event => {
   try {
     if (file.size > 10000000) throw Error('Il file supera il limite di 10 MB.');
     const raw = JSON.parse(await file.text()), next = ER.validate(raw.model || raw), importedDerived = readDerived(raw.derived);
-    if (replaceProject(next, importedDerived)) notify('Progetto aperto. Schema iniziale e ristrutturazione sono conservati.');
+    if (replaceProject(next, importedDerived, raw.display)) notify('Progetto aperto. Schema iniziale e ristrutturazione sono conservati.');
   } catch (error) { notify(`Impossibile aprire il progetto: ${error.message}`); }
 });
 const filename = () => model.title.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'schema-er';
@@ -591,10 +606,10 @@ function download(content, type, extension) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 async function exportPNG() {
-  const svg = ER.svg(shownModel()), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  const svg = ER.svg(shownModel(), display), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {
     const image = new Image(); image.src = url; await image.decode();
-    const b = ER.render(shownModel()).bounds, scale = Math.min(2, 8192 / Math.max(b.w, b.h), Math.sqrt(16000000 / (b.w * b.h)));
+    const b = ER.render(shownModel(), '', display).bounds, scale = Math.min(2, 8192 / Math.max(b.w, b.h), Math.sqrt(16000000 / (b.w * b.h)));
     const canvas = document.createElement('canvas'); canvas.width = Math.ceil(b.w * scale); canvas.height = Math.ceil(b.h * scale);
     const ctx = canvas.getContext('2d'); if (!ctx) throw Error('Il browser non supporta l’esportazione PNG.');
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -629,7 +644,7 @@ $('export-form').addEventListener('submit', async event => {
   event.preventDefault(); $('export-error').hidden = true;
   const button = $('export-download'); button.disabled = true; button.textContent = 'Esportazione in corso…';
   const action = exportAction, includeData = $('export-data').checked, fromDatabase = $('export-source').value === 'database';
-  const project = { ...ER.copy(model), derived: derived ? ER.copy(derived) : null };
+  const project = { ...ER.copy(model), derived: derived ? ER.copy(derived) : null, display: ER.copy(display) };
   $('export-source').disabled = true; $('export-data').disabled = true;
   try {
     const snapshot = includeData || (action === 'sql' && fromDatabase) ? await lab.exportDatabase(includeData) : null;
@@ -649,7 +664,7 @@ $('export-menu').addEventListener('click', async event => {
   if (formDirty || textDirty) notify('Esporto l’ultimo schema applicato. Applica o genera le modifiche in bozza per includerle.');
   try {
     if (action === 'json' || action === 'sql') openDataExport(action);
-    else if (action === 'svg') download(ER.svg(shownModel()), 'image/svg+xml', 'svg');
+    else if (action === 'svg') download(ER.svg(shownModel(), display), 'image/svg+xml', 'svg');
     else if (action === 'relational') download(ER.relationalText(derived.relational), 'text/plain;charset=utf-8', 'txt');
     else if (action === 'png') {
       const summary = $('export-menu').querySelector('summary'); summary.style.pointerEvents = 'none'; summary.setAttribute('aria-busy', 'true');
@@ -661,7 +676,7 @@ document.addEventListener('click', event => { if (!event.target.closest('#export
 let beforePrintView;
 window.addEventListener('beforeprint', () => {
   if (!diagramStage()) return;
-  beforePrintView = { ...view }; const b = ER.render(shownModel()).bounds;
+  beforePrintView = { ...view }; const b = ER.render(shownModel(), '', display).bounds;
   $('diagram').setAttribute('viewBox', `${b.x} ${b.y} ${b.w} ${b.h}`); $('diagram').style.aspectRatio = `${b.w} / ${b.h}`;
 });
 window.addEventListener('afterprint', () => { if (beforePrintView) view = beforePrintView; $('diagram').style.aspectRatio = ''; updateView(); });
