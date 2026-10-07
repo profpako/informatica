@@ -128,7 +128,7 @@
       $('lab-model').value = state.models.includes(choice) ? choice : state.models.includes(recommended) ? recommended : state.models[0] || recommended;
       loadedModel = $('lab-model').value;
       $('lab-ai-status').textContent = state.aiError || (state.models.length ? 'Ollama attivo · scegli un modello installato.' : 'Ollama attivo: scarica il modello indicato sopra.');
-      if (!state.dependencies) throw Error('Installa le dipendenze del laboratorio seguendo la sezione Avvio del README. L’editor ER rimane disponibile.');
+      if (!state.dependencies) throw Error(state.dependencyError || 'Il server non ha caricato le dipendenze del laboratorio. Se le hai già installate, arresta il server con Ctrl+C, riavvia Trama con ./start_app.sh e ricarica la pagina. Altrimenti segui la sezione Avvio del README.');
     }
     $('lab-connect-form').addEventListener('submit', event => {
       event.preventDefault(); work('Connessione al server scelto…', async () => {

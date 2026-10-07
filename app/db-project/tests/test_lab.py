@@ -26,6 +26,44 @@ TABLES = [dict(name='ditte', columns=[column('id', key='PRI', auto=True), column
 
 
 class Laboratory(unittest.TestCase):
+    def test_dependency_guidance_distinguishes_setup_from_restart_and_reaches_all_endpoints(self):
+        with patch.object(server, 'pymysql', None), patch.object(server, 'sqlglot', None), \
+             patch.object(server, 'ROOT', Path('/trama')):
+            with patch.object(Path, 'exists', return_value=False), patch.object(server.subprocess, 'run') as run:
+                message = server.dependency_error()
+                self.assertIn('python3 -m venv .venv', message)
+                self.assertIn('pip install -r requirements.txt', message)
+                run.assert_not_called()
+            with patch.object(Path, 'exists', return_value=True), patch.object(server.subprocess, 'run') as run:
+                run.return_value = SimpleNamespace(returncode=1, stderr="ModuleNotFoundError: No module named 'sqlglot'")
+                self.assertIn("No module named 'sqlglot'", server.dependency_error())
+                self.assertIn('pip install', server.dependency_error())
+                run.return_value = SimpleNamespace(returncode=0)
+                for prefix, reason in [('/other-python', 'Python diverso'), ('/trama/.venv', 'all’avvio')]:
+                    with self.subTest(prefix=prefix), patch.object(server.sys, 'prefix', prefix):
+                        message = server.dependency_error()
+                        self.assertIn(reason, message)
+                        self.assertIn('Ctrl+C', message)
+                        self.assertIn('./start_app.sh', message)
+                        self.assertNotIn('pip install', message)
+                for action in [lambda: server.connect({}), lambda: server.parse_sql('SELECT 1')]:
+                    with self.assertRaises(ValueError) as failure:
+                        action()
+                    self.assertEqual(str(failure.exception), server.dependency_error())
+                handler = object.__new__(server.Handler)
+                handler.path = '/api/status'
+                handler.server = SimpleNamespace(server_port=4173)
+                handler.headers = {'Host': '127.0.0.1:4173'}
+                replies = []
+                handler.reply = lambda value: replies.append(value)
+                with patch.object(server, 'ollama', return_value={'models': []}):
+                    handler.do_GET()
+                self.assertFalse(replies[0]['dependencies'])
+                self.assertEqual(replies[0]['dependencyError'], server.dependency_error())
+                run.side_effect = OSError('Cannot execute Python')
+                self.assertIn('Non riesco ad avviare', server.dependency_error())
+        self.assertEqual(server.dependency_error(), '')
+
     def test_expired_sessions_have_a_distinct_response_without_attempting_insert(self):
         for sessions in ({}, {'expired': dict(touched=time.monotonic() - 3601)}):
             raw = json.dumps(dict(session='expired', draft={})).encode()

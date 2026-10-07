@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 import re
 import secrets
+import subprocess
+import sys
 import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -27,6 +29,33 @@ SESSIONS = {}
 SESSION_LOCK = threading.Lock()
 AI_LOCK = threading.Lock()
 SYSTEM_DATABASES = {'mysql', 'information_schema', 'performance_schema', 'sys'}
+
+
+def dependency_error():
+    if pymysql and sqlglot:
+        return ''
+    python = ROOT / '.venv/bin/python'
+    restart = f'Arresta il server nel Terminale con Ctrl+C, poi esegui ./start_app.sh dalla cartella del progetto ({ROOT}) e ricarica la pagina.'
+    terminal = 'Nel Terminale, dalla cartella del progetto, '
+    if not python.exists():
+        return ('L’ambiente Python del laboratorio (.venv) non è disponibile su questo Mac. '
+                + terminal + 'esegui python3 -m venv .venv, poi .venv/bin/python -m pip install -r requirements.txt. ' + restart)
+    try:
+        check = subprocess.run([str(python), '-c', 'import pymysql, sqlglot; from sqlglot import exp'],
+                               capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return ('Non riesco ad avviare il Python del laboratorio (.venv/bin/python). '
+                + terminal + 'verifica Python 3.10 o successivo e ricrea .venv con python3 -m venv .venv, '
+                'poi esegui .venv/bin/python -m pip install -r requirements.txt. ' + restart)
+    if check.returncode == 0:
+        reason = ('Il server è avviato con un Python diverso da quello del progetto. '
+                  if Path(sys.prefix).resolve() != (ROOT / '.venv').resolve()
+                  else 'Le dipendenze ora sono disponibili, ma questo server non le aveva caricate all’avvio. ')
+        return reason + 'Le dipendenze sono già installate nella .venv: non serve reinstallarle. ' + restart
+    detail = check.stderr.strip().splitlines()
+    return ('Le dipendenze del laboratorio non si caricano nella .venv di questo Mac'
+            + (f': {detail[-1]}.' if detail else '.') + ' ' + terminal
+            + 'esegui .venv/bin/python -m pip install -r requirements.txt. ' + restart)
 
 
 def quote(name):
@@ -70,7 +99,7 @@ def configuration(raw):
 
 def connect(config, database=True):
     if not pymysql:
-        raise ValueError('Installa le dipendenze del laboratorio: .venv/bin/python -m pip install -r requirements.txt')
+        raise ValueError(dependency_error())
     return pymysql.connect(**{**config, 'database': config['database'] if database else None},
                            charset='utf8mb4', autocommit=False, connect_timeout=4,
                            read_timeout=8, write_timeout=8, local_infile=False)
@@ -145,7 +174,7 @@ SAFE_FUNCTIONS = {'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'ABS', 'ROUND', 'FLOOR', 
 
 def parse_sql(sql):
     if not sqlglot:
-        raise ValueError('Installa le dipendenze del laboratorio da requirements.txt.')
+        raise ValueError(dependency_error())
     try:
         return [s for s in sqlglot.parse(sql, read='mysql') if s is not None and not isinstance(s, exp.Semicolon)]
     except sqlglot.errors.SqlglotError as error:
@@ -554,7 +583,8 @@ class Handler(SimpleHTTPRequestHandler):
                 error = ''
             except ValueError as failure:
                 models = []; error = str(failure)
-            self.reply(dict(dependencies=bool(pymysql), models=models, aiError=error, defaultModel=DEFAULT_MODEL)); return
+            self.reply(dict(dependencies=bool(pymysql and sqlglot), dependencyError=dependency_error(),
+                            models=models, aiError=error, defaultModel=DEFAULT_MODEL)); return
         # Serve only public editor assets, never Python, tests, dotfiles or directory listings.
         path = self.path.split('?', 1)[0]
         if path == '/':

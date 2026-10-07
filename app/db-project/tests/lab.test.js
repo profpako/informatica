@@ -38,6 +38,27 @@ test('Generation progress arrives before completion across split UTF-8 chunks, a
   await assert.rejects(readGenerationStream(interrupted, () => {}), /interrotta/);
 });
 
+test('The laboratory displays the server dependency diagnosis without replacing it with generic installation advice', async () => {
+  const nodes = new Map();
+  const node = id => {
+    if (!nodes.has(id)) nodes.set(id, { value: '', handlers: {},
+      addEventListener(type, handler) { this.handlers[type] = handler; },
+      querySelectorAll() { return []; }, querySelector() { return node(id + '-submit'); } });
+    return nodes.get(id);
+  };
+  const diagnosis = 'Le dipendenze ora sono disponibili. Arresta il server con Ctrl+C e riavvia ./start_app.sh.';
+  const context = vm.createContext({ ER, localStorage: { getItem() {} }, fetch: async () => ({
+    ok: true, text: async () => JSON.stringify({ dependencies: false, dependencyError: diagnosis, models: [] })
+  }) });
+  vm.runInContext(fs.readFileSync(require.resolve('../lab.js'), 'utf8'), context);
+  context.TramaLab.mount({ panel: { querySelector: selector => node(selector.slice(1)), addEventListener() {}, setAttribute() {} },
+    notify() {}, onConnection() {}, getPhysical() {} });
+  node('lab-ai-refresh').handlers.click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(node('lab-error').hidden, false);
+  assert.equal(node('lab-error').textContent, diagnosis);
+});
+
 test('Expired insertion preserves the proposal, unlocks reconnection and inserts only after reconnecting to the same database', async () => {
   // Minimal DOM surface for the real mounted event handlers; no browser dependency.
   const nodes = new Map();

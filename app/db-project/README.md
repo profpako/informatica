@@ -22,7 +22,7 @@ python3 -m venv .venv
 ./start_app.sh
 ```
 
-Lo script usa automaticamente `.venv` se presente. Le dipendenze sono PyMySQL per la connessione e SQLGlot per analizzare le SELECT MySQL; il server HTTP è quello della libreria standard Python e ascolta solo su questo Mac. Se avevi già avviato il vecchio server statico, arrestalo e riavvia lo script.
+Esegui questi comandi nel Terminale dalla cartella del progetto, su ogni Mac: `.venv` e i pacchetti installati non si trasferiscono con Git. Lo script usa automaticamente `.venv` se presente. Le dipendenze sono PyMySQL per la connessione e SQLGlot per analizzare le SELECT MySQL; il server HTTP è quello della libreria standard Python e ascolta solo su questo Mac. Dopo aver creato `.venv` o installato le dipendenze, arresta anche un server già avviato con Ctrl+C, riavvia `./start_app.sh` e ricarica la pagina. Il laboratorio distingue un ambiente assente, dipendenze che non si caricano e un server da riavviare.
 
 Avvia il tuo MySQL e scegli **Laboratorio query** nel selettore della vista. Indica `127.0.0.1`, porta, database, utente e password: più server locali vengono distinti dalla porta, senza scelta automatica. Il pannello mostra indirizzo, database e versione effettiva (anche MariaDB, se è il server installato). La password resta in memoria per la sessione, non viene salvata nel browser o nel JSON. Le sessioni scadono dopo un’ora senza operazioni e al riavvio del server.
 
