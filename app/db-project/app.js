@@ -9,7 +9,9 @@ let relationalView = 'compact';
 let display = ER.displayOptions();
 let statement = null, statementVisible = false, statementDraft = null, statementURL = '', renderedStatement = null;
 let physicalTableId = '';
+let relationalTableId = '';
 let exercises = [], activeExerciseId = 'tiktok', deletedExercise = null, libraryLoaded = false;
+let exerciseMetadata = { createdAt: null, updatedAt: null, classTags: [] }, classFilter = '';
 let view = { x: 0, y: 0, w: 1000, h: 700 }, drag = null, toastTimer, storageAvailable = true;
 let draftText = null, firstResize = true, lastCanvasSize = { w: 0, h: 0 };
 try {
@@ -23,6 +25,7 @@ try {
     display = ER.displayOptions(record.display);
     statement = readStatement(record.statement);
     statementVisible = !!statement && record.statementVisible === true;
+    exerciseMetadata = readExerciseMetadata(record.metadata);
     draftText = typeof record.draft === 'string' && record.draft.length <= 1000000 ? record.draft : null;
     textDirty = draftText != null && draftText !== ER.serialize(model);
     if (Array.isArray(record.exercises)) {
@@ -51,7 +54,7 @@ function readDerived(raw) {
   if (typeof raw.signature !== 'string' || raw.signature.length > 1000000 || !Array.isArray(raw.report) || raw.report.length > 1000 || raw.report.some(s => typeof s !== 'string' || s.length > 2000)) throw Error('La ristrutturazione salvata non è valida.');
   const updated = ER.upgradeMultivalues(raw);
   const loaded = { model: updated.model, signature: raw.signature, report: updated.report };
-  if (raw.relational || raw.physical) loaded.relational = ER.relational(loaded.model);
+  if (raw.relational || raw.physical) loaded.relational = ER.relational(loaded.model, raw.relational?.nameOverrides);
   if (raw.physical) {
     loaded.physical = ER.restorePhysical(raw.physical, raw.relational || loaded.relational, loaded.relational, updated.renames);
   }
@@ -59,26 +62,52 @@ function readDerived(raw) {
 }
 const shownModel = () => stage !== 'initial' && derived ? derived.model : model;
 function currentExerciseRecord() {
-  return { model, derived, stage, relationalView, display, statement, statementVisible, draft: $('schema-text').value };
+  return { model, derived, stage, relationalView, display, statement, statementVisible, metadata: exerciseMetadata, draft: $('schema-text').value };
+}
+function readExerciseMetadata(raw) {
+  if (raw == null) return { createdAt: null, updatedAt: null, classTags: [] };
+  if (typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray(raw.classTags) || raw.classTags.length > 30) throw Error('Date o tag dell’esercizio non validi.');
+  const date = value => {
+    if (value == null) return null;
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value) || !Number.isFinite(Date.parse(value))) throw Error('Data dell’esercizio non valida.');
+    const normalized = new Date(value).toISOString();
+    if (normalized.slice(0, 19) !== value.slice(0, 19)) throw Error('Data dell’esercizio non valida.');
+    return normalized;
+  };
+  const createdAt = date(raw.createdAt), updatedAt = date(raw.updatedAt), tags = new Set();
+  if (createdAt && updatedAt && updatedAt < createdAt) throw Error('L’ultima modifica precede la creazione dell’esercizio.');
+  const classTags = raw.classTags.map(tag => {
+    if (!tag || typeof tag.className !== 'string' || !tag.className.trim() || tag.className.length > 40 || /[\u0000-\u001f\u007f]/.test(tag.className) || typeof tag.schoolYear !== 'string' || !/^\d{4}\/\d{2}$/.test(tag.schoolYear) || Number(tag.schoolYear.slice(-2)) !== (Number(tag.schoolYear.slice(0, 4)) + 1) % 100) throw Error('Inserisci una classe (massimo 40 caratteri) e un anno scolastico come 2026/27.');
+    const normalized = { className: tag.className.trim().replace(/\s+/g, ' ').toLocaleUpperCase('it-IT'), schoolYear: tag.schoolYear };
+    if (normalized.className.length > 40) throw Error('Il nome della classe può contenere al massimo 40 caratteri.');
+    const key = JSON.stringify(normalized);
+    if (tags.has(key)) throw Error('Questo tag di classe è già presente.');
+    tags.add(key); return normalized;
+  });
+  return { createdAt, updatedAt, classTags };
 }
 function readExerciseRecord(raw) {
   if (!raw || typeof raw !== 'object') throw Error('Esercizio non valido.');
   const loadedModel = ER.validate(raw.model), loadedDerived = readDerived(raw.derived), loadedStatement = readStatement(raw.statement);
   const loadedStage = raw.stage === 'lab' ? 'lab' : raw.stage === 'physical' && loadedDerived?.physical ? 'physical' : raw.stage === 'relational' && loadedDerived?.relational ? 'relational' : raw.stage === 'restructured' && loadedDerived ? 'restructured' : 'initial';
   if (raw.draft != null && (typeof raw.draft !== 'string' || raw.draft.length > 1000000)) throw Error('Bozza dell’esercizio non valida.');
-  return { model: loadedModel, derived: loadedDerived, stage: loadedStage, relationalView: raw.relationalView === 'tables' ? 'tables' : 'compact', display: ER.displayOptions(raw.display), statement: loadedStatement, statementVisible: !!loadedStatement && raw.statementVisible === true, draft: raw.draft ?? ER.serialize(loadedModel) };
+  return { model: loadedModel, derived: loadedDerived, stage: loadedStage, relationalView: raw.relationalView === 'tables' ? 'tables' : 'compact', display: ER.displayOptions(raw.display), statement: loadedStatement, statementVisible: !!loadedStatement && raw.statementVisible === true, metadata: readExerciseMetadata(raw.metadata), draft: raw.draft ?? ER.serialize(loadedModel) };
 }
 function saveCurrentExercise() {
   if (!activeExerciseId) {
     if (!model.entities.length && !statement && !textDirty && model.title === 'Nuovo schema') return;
     activeExerciseId = ER.uid();
+    const now = new Date().toISOString(); exerciseMetadata = { createdAt: now, updatedAt: now, classTags: [] };
   }
+  const previous = exercises.find(e => e.id === activeExerciseId)?.record, current = currentExerciseRecord();
+  if (previous && (['model', 'derived', 'statement', 'draft'].some(key => JSON.stringify(previous[key]) !== JSON.stringify(current[key])) || JSON.stringify(previous.metadata.classTags) !== JSON.stringify(exerciseMetadata.classTags))) exerciseMetadata = { ...exerciseMetadata, updatedAt: new Date().toISOString() };
   const item = { id: activeExerciseId, record: ER.copy(currentExerciseRecord()) }, index = exercises.findIndex(e => e.id === activeExerciseId);
   if (index < 0) exercises.push(item); else exercises[index] = item;
 }
 function applyExerciseRecord(record) {
   model = record.model; derived = record.derived; stage = record.stage; relationalView = record.relationalView; display = record.display;
   statement = record.statement; statementVisible = record.statementVisible;
+  exerciseMetadata = record.metadata;
   $('schema-text').value = record.draft; textDirty = record.draft !== ER.serialize(model);
   selected = ''; history.length = future.length = 0;
 }
@@ -90,12 +119,50 @@ function openExercise(id) {
 function renderExercises() {
   $('example-select').innerHTML = '<option value="">Scegli un esercizio…</option>' + exercises.map(e => `<option value="${ER.escape(e.id)}">${ER.escape(e.record.model.title)}</option>`).join('');
   $('example-select').value = activeExerciseId;
-  $('exercises-list').innerHTML = exercises.map(e => `<div class="exercise-row"><div><strong>${ER.escape(e.record.model.title)}</strong><small>${e.id === activeExerciseId ? 'Aperto · ' : ''}${e.record.model.entities.length} entità · ${e.record.statement ? 'Traccia presente' : 'Nessuna traccia'}</small></div><button class="button subtle" data-open-exercise="${ER.escape(e.id)}">Apri</button><button class="icon-button danger" data-delete-exercise="${ER.escape(e.id)}" aria-label="Elimina esercizio ${ER.escape(e.record.model.title)}">${icon('trash')}</button></div>`).join('') || '<p>Nessun esercizio salvato. Usa Nuovo o Apri per aggiungerne uno.</p>';
+  const openedClasses = new Set([...$('exercises-list').querySelectorAll('[data-classes-exercise][open]')].map(el => el.dataset.classesExercise));
+  const tags = [...new Set(exercises.flatMap(e => e.record.metadata.classTags.map(tag => JSON.stringify(tag))))].sort();
+  if (!tags.includes(classFilter)) classFilter = '';
+  const tagLabel = tag => `${tag.className} · ${tag.schoolYear}`;
+  $('exercise-class-filter').innerHTML = '<option value="">Tutte le classi e gli anni</option>' + tags.map(key => `<option value="${ER.escape(key)}">${ER.escape(tagLabel(JSON.parse(key)))}</option>`).join('');
+  $('exercise-class-filter').value = classFilter;
+  const formatter = new Intl.DateTimeFormat('it-IT', { dateStyle: 'short', timeStyle: 'medium' });
+  const dateLabel = date => date ? `<time datetime="${ER.escape(date)}">${formatter.format(new Date(date))}</time>` : 'Non disponibile';
+  const today = new Date(), year = today.getFullYear() - (today.getMonth() < 8 ? 1 : 0), schoolYear = `${year}/${String((year + 1) % 100).padStart(2, '0')}`;
+  $('exercises-list').innerHTML = exercises.filter(e => !classFilter || e.record.metadata.classTags.some(tag => JSON.stringify(tag) === classFilter)).map(e => `<div class="exercise-row"><div><strong>${ER.escape(e.record.model.title)}</strong><small>${e.id === activeExerciseId ? 'Aperto · ' : ''}${e.record.model.entities.length} entità · ${e.record.statement ? 'Traccia presente' : 'Nessuna traccia'} · Creazione: ${dateLabel(e.record.metadata.createdAt)} · Ultima modifica: ${dateLabel(e.record.metadata.updatedAt)}</small><div class="exercise-tags">${e.record.metadata.classTags.map((tag, i) => `<span>${ER.escape(tagLabel(tag))}<button type="button" data-remove-class="${i}" data-exercise="${ER.escape(e.id)}" aria-label="Rimuovi tag ${ER.escape(tagLabel(tag))}">×</button></span>`).join('') || ''}</div><details class="exercise-classes" data-classes-exercise="${ER.escape(e.id)}"${openedClasses.has(e.id) ? ' open' : ''}><summary>Classi e anno scolastico${e.record.metadata.classTags.length ? ` (${e.record.metadata.classTags.length})` : ''}</summary><form data-class-exercise="${ER.escape(e.id)}" class="exercise-class-form"><label>Classe<input name="className" maxlength="40" placeholder="5A" required></label><label>Anno scolastico<input name="schoolYear" maxlength="7" value="${schoolYear}" pattern="[0-9]{4}/[0-9]{2}" placeholder="2026/27" required></label><button class="button subtle" type="submit">Aggiungi tag</button></form></details></div><button class="button subtle" data-open-exercise="${ER.escape(e.id)}">Apri</button><button class="icon-button danger" data-delete-exercise="${ER.escape(e.id)}" aria-label="Elimina esercizio ${ER.escape(e.record.model.title)}">${icon('trash')}</button></div>`).join('') || `<p>${classFilter ? 'Nessun esercizio per questa classe e anno.' : 'Nessun esercizio salvato. Usa Nuovo o Apri per aggiungerne uno.'}</p>`;
   $('restore-exercise').hidden = !deletedExercise;
 }
 $('exercises-button').addEventListener('click', () => { saveCurrentExercise(); renderExercises(); $('exercises-error').hidden = true; $('exercises-dialog').showModal(); });
 $('exercises-close').addEventListener('click', () => $('exercises-dialog').close());
+$('exercise-class-filter').addEventListener('change', event => { classFilter = event.target.value; renderExercises(); });
+function saveExerciseTags(item, classTags) {
+  const previous = ER.copy(item.record.metadata), metadata = readExerciseMetadata({ ...previous, classTags, updatedAt: new Date().toISOString() });
+  item.record.metadata = metadata;
+  if (item.id === activeExerciseId) exerciseMetadata = metadata;
+  if (!persist()) {
+    exercises.find(e => e.id === item.id).record.metadata = previous;
+    if (item.id === activeExerciseId) exerciseMetadata = previous;
+    renderExercises(); throw Error('Tag non salvati: la memoria del browser non è disponibile.');
+  }
+  $('exercises-error').hidden = true;
+}
+$('exercises-list').addEventListener('submit', event => {
+  const form = event.target.closest('[data-class-exercise]'); if (!form) return;
+  event.preventDefault();
+  try {
+    const item = exercises.find(e => e.id === form.dataset.classExercise);
+    const tag = { className: form.elements.className.value, schoolYear: form.elements.schoolYear.value.trim() };
+    saveExerciseTags(item, [...item.record.metadata.classTags, tag]); notify('Tag di classe salvato.');
+  } catch (error) { errorIn('exercises-error', error.message); }
+});
 $('exercises-list').addEventListener('click', event => {
+  const remove = event.target.closest('[data-remove-class]');
+  if (remove) {
+    try {
+      const item = exercises.find(e => e.id === remove.dataset.exercise);
+      saveExerciseTags(item, item.record.metadata.classTags.filter((tag, i) => i !== Number(remove.dataset.removeClass))); notify('Tag di classe rimosso.');
+    } catch (error) { errorIn('exercises-error', error.message); }
+    return;
+  }
   const open = event.target.closest('[data-open-exercise]');
   if (open) { if (openExercise(open.dataset.openExercise)) $('exercises-dialog').close(); return; }
   const button = event.target.closest('[data-delete-exercise]'); if (!button) return;
@@ -472,6 +539,7 @@ $('restructure').addEventListener('click', () => {
   if (!closeEditor()) return;
   try {
     const result = ER.restructure(model, display);
+    if (derived?.relational?.nameOverrides) result.relational = ER.relational(result.model, relationalNamesFor(result.model));
     if (!canReplacePhysical()) return;
     remember(); derived = { ...result, signature: ER.serialize(model) }; stage = 'restructured'; selected = ''; draw(); boundsView(); persist();
     notify('ER ristrutturato generato. Lo schema iniziale è conservato.');
@@ -479,15 +547,38 @@ $('restructure').addEventListener('click', () => {
 });
 function renderRelational() {
   const result = derived.relational, referenceName = id => result.tables.find(t => t.id === id).name;
+  const selectedTable = result.tables.find(t => t.id === relationalTableId) || result.tables[0]; relationalTableId = selectedTable.id;
+  const nameEditor = `<details class="relational-name-editor"><summary>Modifica nome relazione</summary><form id="relational-name-form"><div class="relational-name-fields"><div><label for="relational-name-table">Relazione da modificare</label><select id="relational-name-table">${result.tables.map(t => `<option value="${ER.escape(t.id)}"${t.id === selectedTable.id ? ' selected' : ''}>${ER.escape(t.name)}</option>`).join('')}</select></div><div><label for="relational-name">Nome della relazione</label><input id="relational-name" value="${ER.escape(selectedTable.name)}" maxlength="64" required></div></div><p class="field-hint">Il nome viene conservato anche quando rigeneri il relazionale e usato nello schema fisico.</p><p id="relational-name-error" class="error" role="alert" hidden></p><button class="button primary" type="submit">Applica nome</button></form></details>`;
   const references = t => t.foreignKeys.map(f => `<p><strong>FK:</strong> ${f.columns.map(ER.escape).join(' + ')} → ${ER.escape(referenceName(f.target))}(${f.references.map(ER.escape).join(', ')})</p>`).join('') + t.unique.map(u => `<p><strong>UNIQUE:</strong> ${u.map(ER.escape).join(' + ')}</p>`).join('');
   const compact = `<p class="compact-legend"><span class="relational-pk">PK: una sottolineatura</span> · <span class="relational-fk">FK: doppia sottolineatura</span> · <strong>*</strong> campo opzionale. Una PK composta ha un’unica linea sull’intero gruppo, anche quando i suoi attributi sono FK.</p><div class="compact-schema">${result.tables.map(ER.relationalNotation).join('')}</div><details class="compact-references"><summary>Riferimenti delle FK e vincoli UNIQUE</summary>${result.tables.filter(t => t.foreignKeys.length || t.unique.length).map(t => `<section><h3>${ER.escape(t.name)}</h3>${references(t)}</section>`).join('') || '<p>Nessuna FK o unicità aggiuntiva.</p>'}</details>`;
   const tables = result.tables.map(t => `<section class="relation-table"><h3>${ER.escape(t.name)}</h3><table><thead><tr><th scope="col">Attributo</th><th scope="col">Chiavi</th><th scope="col">Null</th></tr></thead><tbody>${t.columns.map(c => `<tr><td>${ER.escape(c.name)}</td><td>${[t.primaryKey.includes(c.name) ? 'PK' : '', t.foreignKeys.some(f => f.columns.includes(c.name)) ? 'FK' : ''].filter(Boolean).join(' · ') || '—'}</td><td>${c.nullable ? 'Ammesso' : 'No'}</td></tr>`).join('')}</tbody></table><p><strong>PK:</strong> ${t.primaryKey.map(ER.escape).join(' + ')}</p>${references(t)}</section>`).join('');
-  $('relational-panel').innerHTML = `<h2>Schema relazionale</h2><p>Derivato dall’ER ristrutturato. PK identifica le righe; FK riferisce la chiave di un’altra relazione.</p><div class="relational-view-control"><label for="relational-view">Rappresentazione</label><select id="relational-view"><option value="compact" ${relationalView === 'compact' ? 'selected' : ''}>Notazione compatta (PDF TikTok)</option><option value="tables" ${relationalView === 'tables' ? 'selected' : ''}>Dettaglio delle tabelle</option></select></div><div id="relational-compact" ${relationalView !== 'compact' ? 'hidden' : ''}>${compact}</div><div id="relational-tables" ${relationalView !== 'tables' ? 'hidden' : ''}>${tables}</div><section class="relation-constraints"><h3>Vincoli residui</h3><p>Questi vincoli richiedono verifiche ulteriori nella futura implementazione fisica.</p><ul>${result.constraints.map(s => `<li>${ER.escape(s)}</li>`).join('') || '<li>Nessun vincolo residuo aggiuntivo.</li>'}</ul><details><summary>Regole di traduzione applicate</summary><ul>${result.report.map(s => `<li>${ER.escape(s)}</li>`).join('')}</ul></details></section>`;
+  $('relational-panel').innerHTML = `<h2>Schema relazionale</h2><p>Derivato dall’ER ristrutturato. PK identifica le righe; FK riferisce la chiave di un’altra relazione.</p><div class="relational-view-control"><label for="relational-view">Rappresentazione</label><select id="relational-view"><option value="compact" ${relationalView === 'compact' ? 'selected' : ''}>Notazione compatta (PDF TikTok)</option><option value="tables" ${relationalView === 'tables' ? 'selected' : ''}>Dettaglio delle tabelle</option></select></div>${nameEditor}<div id="relational-compact" ${relationalView !== 'compact' ? 'hidden' : ''}>${compact}</div><div id="relational-tables" ${relationalView !== 'tables' ? 'hidden' : ''}>${tables}</div><section class="relation-constraints"><h3>Vincoli residui</h3><p>Questi vincoli richiedono verifiche ulteriori nella futura implementazione fisica.</p><ul>${result.constraints.map(s => `<li>${ER.escape(s)}</li>`).join('') || '<li>Nessun vincolo residuo aggiuntivo.</li>'}</ul><details><summary>Regole di traduzione applicate</summary><ul>${result.report.map(s => `<li>${ER.escape(s)}</li>`).join('')}</ul></details></section>`;
 }
 $('relational-panel').addEventListener('change', event => {
+  if (event.target.id === 'relational-name-table') {
+    relationalTableId = event.target.value;
+    $('relational-name').value = derived.relational.tables.find(t => t.id === relationalTableId).name;
+    $('relational-name-error').hidden = true; return;
+  }
   if (event.target.id !== 'relational-view') return;
   relationalView = event.target.value;
   $('relational-compact').hidden = relationalView !== 'compact'; $('relational-tables').hidden = relationalView !== 'tables'; persist();
+});
+$('relational-panel').addEventListener('submit', event => {
+  if (event.target.id !== 'relational-name-form') return;
+  event.preventDefault();
+  try {
+    const names = { ...derived.relational.nameOverrides, [relationalTableId]: $('relational-name').value };
+    const relational = ER.relational(derived.model, names);
+    let physical = derived.physical && ER.copy(derived.physical);
+    if (physical) {
+      physical.tables.find(t => t.id === relationalTableId).name = relational.tables.find(t => t.id === relationalTableId).name.toLowerCase();
+      physical = ER.validatePhysical(physical, relational);
+    }
+    remember(); derived.relational = relational;
+    if (physical) derived.physical = physical;
+    draw(); persist(); notify('Nome della relazione applicato e salvato.');
+  } catch (error) { errorIn('relational-name-error', error.message); }
 });
 $('relational-generate').addEventListener('click', () => {
   if (!closeEditor()) return;
@@ -497,9 +588,20 @@ $('relational-generate').addEventListener('click', () => {
     remember(); derived = candidate; stage = 'relational'; selected = ''; draw(); persist(); notify('Schema relazionale generato con PK, FK e vincoli residui.');
   } catch (error) { notify(`Traduzione non riuscita: ${error.message}`); }
 });
+function relationalNamesFor(nextModel) {
+  return Object.fromEntries(Object.entries(derived?.relational?.nameOverrides || {}).flatMap(([id, name]) => {
+    for (const kind of ['entities', 'relationships']) {
+      const old = derived.model[kind].find(node => node.id === id);
+      if (!old) continue;
+      const next = nextModel[kind].find(node => node.id === id) || nextModel[kind].find(node => node.name === old.name);
+      return next ? [[next.id, name]] : [];
+    }
+    return [];
+  }));
+}
 function relationalCandidate() {
   const signature = ER.serialize(model), candidate = !derived || derived.signature !== signature ? { ...ER.restructure(model, display), signature } : ER.copy(derived);
-  candidate.relational = ER.relational(candidate.model);
+  candidate.relational = ER.relational(candidate.model, relationalNamesFor(candidate.model));
   return candidate;
 }
 function canReplacePhysical(candidate = {}) {
@@ -532,7 +634,7 @@ function renderPhysical() {
     return `<fieldset class="physical-fk"><legend>${ER.escape(f.columns.join(' + '))} → ${ER.escape(owner.name)}(${ER.escape(f.references.join(', '))})</legend><div class="field-pair">${select('onDelete', 'ON DELETE')}${select('onUpdate', 'ON UPDATE')}</div></fieldset>`;
   }).join('');
   const sql = ER.physicalSQL(result, derived.relational);
-  $('physical-panel').innerHTML = `<h2>Schema fisico · MySQL</h2><p>Tipi proposti secondo le convenzioni dell’esercizio TikTok. Scegli una tabella e adatta la proposta. Le modifiche si salvano con <strong>Applica scelte SQL</strong>.</p><form id="physical-form"><div class="physical-database"><div><label for="physical-database">Nome del database</label><input id="physical-database" value="${ER.escape(result.database)}" maxlength="64" required><button class="button primary" type="submit" style="margin-top:12px">Applica scelte SQL</button></div><div class="physical-options"><label><input id="physical-create-database" type="checkbox"${checked(result.createDatabase)}> CREATE DATABASE</label><label><input id="physical-if-not-exists" type="checkbox"${checked(result.ifNotExists)}> IF NOT EXISTS</label><label><input id="physical-include-engine" type="checkbox"${checked(result.includeEngine)}> ENGINE=InnoDB</label><label><input id="physical-include-charset" type="checkbox"${checked(result.includeCharset)}> DEFAULT CHARSET=utf8mb4</label></div></div><p id="physical-error" class="error" role="alert" hidden></p><p id="physical-draft-status" class="field-hint" role="status">Le scelte mostrate sono applicate.</p><p class="field-hint">ENGINE e CHARSET sono facoltativi e valgono per tutte le tabelle. Senza queste clausole si usano il motore predefinito del server e il charset del database. La spunta CHARSET specifica utf8mb4 anche in CREATE DATABASE.</p><div class="physical-table-control"><div><label for="physical-table">Tabella da modificare</label><select id="physical-table">${result.tables.map(t => `<option value="${t.id}"${t.id === table.id ? ' selected' : ''}>${ER.escape(t.name)}</option>`).join('')}</select></div><div><label for="physical-table-name">Nome SQL della tabella</label><input id="physical-table-name" value="${ER.escape(table.name)}" maxlength="64" required></div></div><datalist id="mysql-types">${ER.physicalTypePresets.map(type => `<option value="${type}"></option>`).join('')}</datalist><section aria-label="Colonne di ${ER.escape(table.name)}">${columns}</section>${fkFields ? `<h3>Integrità referenziale</h3><details class="physical-fk-help"><summary>Come scegliere ON DELETE e ON UPDATE</summary><p>Le azioni riguardano le righe che fanno riferimento alla tabella collegata: ON DELETE quando elimini la riga referenziata, ON UPDATE quando cambi la sua chiave.</p><dl><dt>Non specificare</dt><dd>Omette la clausola SQL. Il comportamento predefinito è NO ACTION, equivalente a RESTRICT con InnoDB.</dd><dt>RESTRICT</dt><dd>Blocca eliminazione o modifica della chiave se esistono righe che la referenziano.</dd><dt>CASCADE</dt><dd>ON DELETE elimina anche le righe collegate; ON UPDATE aggiorna le loro FK con il nuovo valore della chiave.</dd><dt>SET NULL</dt><dd>Conserva le righe collegate e mette a NULL le loro FK. Tutte le colonne della FK devono ammettere NULL.</dd><dt>NO ACTION</dt><dd>Con InnoDB blocca subito l’operazione come RESTRICT: non significa ignorare la FK.</dd></dl><p><a href="https://dev.mysql.com/doc/refman/8.4/en/create-table-foreign-keys.html" target="_blank" rel="noopener">Documentazione MySQL sulle azioni referenziali</a></p></details>${fkFields}` : ''}<label for="physical-checks">Vincoli CHECK della tabella</label><textarea id="physical-checks" rows="4" spellcheck="false" placeholder="prezzo &gt;= 0&#10;foto IS NOT NULL OR video IS NOT NULL">${ER.escape(table.checks.join('\n'))}</textarea><p class="field-hint">Una condizione per riga, senza punto e virgola. Puoi riferirti a più colonne della stessa tabella. <a href="https://dev.mysql.com/doc/refman/8.4/en/create-table-check-constraints.html" target="_blank" rel="noopener">Regole CHECK di MySQL</a>.</p><button class="button primary" type="submit">Applica scelte SQL</button></form><section class="physical-preview"><div class="physical-preview-heading"><h3>SQL applicato</h3><div><button class="button subtle" type="button" data-sql-action="copy">Copia SQL</button><button class="button primary" type="button" data-sql-action="download">Esporta SQL</button></div></div><p class="field-hint">MySQL 8.0.16 o successivo. La proposta conserva PK, FK e UNIQUE del relazionale. Le espressioni CHECK vengono verificate da MySQL quando esegui lo script.</p><textarea id="physical-sql" readonly spellcheck="false" rows="18" aria-label="Script SQL MySQL applicato">${ER.escape(sql)}</textarea><pre class="physical-print">${ER.escape(sql)}</pre></section>${derived.relational.constraints.length ? `<section class="relation-constraints"><h3>Vincoli residui</h3><p>Le regole che richiedono altre righe o tabelle restano da gestire con controlli applicativi o trigger.</p><ul>${derived.relational.constraints.map(c => `<li>${ER.escape(c)}</li>`).join('')}</ul></section>` : ''}`;
+  $('physical-panel').innerHTML = `<h2>Schema fisico · MySQL</h2><p>Tipi proposti secondo le convenzioni dell’esercizio TikTok. Scegli una tabella e adatta la proposta. Le modifiche si salvano con <strong>Applica scelte SQL</strong>.</p><form id="physical-form"><div class="physical-database"><div><label for="physical-database">Nome del database</label><input id="physical-database" value="${ER.escape(result.database)}" maxlength="64" required><button class="button primary" type="submit" style="margin-top:12px">Applica scelte SQL</button></div><div class="physical-options"><label><input id="physical-create-database" type="checkbox"${checked(result.createDatabase)}> CREATE DATABASE</label><label><input id="physical-if-not-exists" type="checkbox"${checked(result.ifNotExists)}> IF NOT EXISTS</label><label><input id="physical-include-engine" type="checkbox"${checked(result.includeEngine)}> ENGINE=InnoDB</label><label><input id="physical-include-charset" type="checkbox"${checked(result.includeCharset)}> DEFAULT CHARSET=utf8mb4</label><label><input id="physical-quote-identifiers" type="checkbox"${checked(result.quoteIdentifiers)}> Usa backtick nei nomi SQL</label></div></div><p id="physical-error" class="error" role="alert" hidden></p><p id="physical-draft-status" class="field-hint" role="status">Le scelte mostrate sono applicate.</p><p class="field-hint">ENGINE e CHARSET sono facoltativi e valgono per tutte le tabelle. Senza queste clausole si usano il motore predefinito del server e il charset del database. La spunta CHARSET specifica utf8mb4 anche in CREATE DATABASE.</p><p class="field-hint">I backtick delimitano i nomi di database, tabelle, colonne e vincoli. Senza backtick usa nomi che iniziano con una lettera o underscore, senza spazi o simboli e non riservati da MySQL. La scelta vale anche per copia ed esportazione SQL.</p><div class="physical-table-control"><div><label for="physical-table">Tabella da modificare</label><select id="physical-table">${result.tables.map(t => `<option value="${t.id}"${t.id === table.id ? ' selected' : ''}>${ER.escape(t.name)}</option>`).join('')}</select></div><div><label for="physical-table-name">Nome SQL della tabella</label><input id="physical-table-name" value="${ER.escape(table.name)}" maxlength="64" required></div></div><datalist id="mysql-types">${ER.physicalTypePresets.map(type => `<option value="${type}"></option>`).join('')}</datalist><section aria-label="Colonne di ${ER.escape(table.name)}">${columns}</section>${fkFields ? `<h3>Integrità referenziale</h3><details class="physical-fk-help"><summary>Come scegliere ON DELETE e ON UPDATE</summary><p>Le azioni riguardano le righe che fanno riferimento alla tabella collegata: ON DELETE quando elimini la riga referenziata, ON UPDATE quando cambi la sua chiave.</p><dl><dt>Non specificare</dt><dd>Omette la clausola SQL. Il comportamento predefinito è NO ACTION, equivalente a RESTRICT con InnoDB.</dd><dt>RESTRICT</dt><dd>Blocca eliminazione o modifica della chiave se esistono righe che la referenziano.</dd><dt>CASCADE</dt><dd>ON DELETE elimina anche le righe collegate; ON UPDATE aggiorna le loro FK con il nuovo valore della chiave.</dd><dt>SET NULL</dt><dd>Conserva le righe collegate e mette a NULL le loro FK. Tutte le colonne della FK devono ammettere NULL.</dd><dt>NO ACTION</dt><dd>Con InnoDB blocca subito l’operazione come RESTRICT: non significa ignorare la FK.</dd></dl><p><a href="https://dev.mysql.com/doc/refman/8.4/en/create-table-foreign-keys.html" target="_blank" rel="noopener">Documentazione MySQL sulle azioni referenziali</a></p></details>${fkFields}` : ''}<label for="physical-checks">Vincoli CHECK della tabella</label><textarea id="physical-checks" rows="4" spellcheck="false" placeholder="prezzo &gt;= 0&#10;foto IS NOT NULL OR video IS NOT NULL">${ER.escape(table.checks.join('\n'))}</textarea><p class="field-hint">Una condizione per riga, senza punto e virgola. Puoi riferirti a più colonne della stessa tabella. <a href="https://dev.mysql.com/doc/refman/8.4/en/create-table-check-constraints.html" target="_blank" rel="noopener">Regole CHECK di MySQL</a>.</p><button class="button primary" type="submit">Applica scelte SQL</button></form><section class="physical-preview"><div class="physical-preview-heading"><h3>SQL applicato</h3><div><button class="button subtle" type="button" data-sql-action="copy">Copia SQL</button><button class="button primary" type="button" data-sql-action="download">Esporta SQL</button></div></div><p class="field-hint">MySQL 8.0.16 o successivo. La proposta conserva PK, FK e UNIQUE del relazionale. Le espressioni CHECK vengono verificate da MySQL quando esegui lo script.</p><textarea id="physical-sql" readonly spellcheck="false" rows="18" aria-label="Script SQL MySQL applicato">${ER.escape(sql)}</textarea><pre class="physical-print">${ER.escape(sql)}</pre></section>${derived.relational.constraints.length ? `<section class="relation-constraints"><h3>Vincoli residui</h3><p>Le regole che richiedono altre righe o tabelle restano da gestire con controlli applicativi o trigger.</p><ul>${derived.relational.constraints.map(c => `<li>${ER.escape(c)}</li>`).join('')}</ul></section>` : ''}`;
 }
 $('physical-panel').addEventListener('input', event => {
   if (!event.target.closest('#physical-form') || event.target.id === 'physical-table') return;
@@ -550,7 +652,7 @@ $('physical-panel').addEventListener('submit', event => {
   try {
     const next = ER.copy(derived.physical), table = next.tables.find(t => t.id === physicalTableId);
     next.database = $('physical-database').value.trim(); next.createDatabase = $('physical-create-database').checked; next.ifNotExists = $('physical-if-not-exists').checked;
-    next.includeEngine = $('physical-include-engine').checked; next.includeCharset = $('physical-include-charset').checked;
+    next.includeEngine = $('physical-include-engine').checked; next.includeCharset = $('physical-include-charset').checked; next.quoteIdentifiers = $('physical-quote-identifiers').checked;
     table.name = $('physical-table-name').value.trim();
     table.columns.forEach((c, i) => {
       for (const option of ['type', 'default', 'unsigned', 'nullable', 'autoIncrement', 'unique']) {
@@ -593,12 +695,14 @@ $('project-title').addEventListener('change', () => {
   try { commit({ ...ER.copy(model), title: $('project-title').value.trim() }); }
   catch (error) { $('project-title').value = model.title; notify(error.message); }
 });
-function replaceProject(next, importedDerived = null, importedDisplay = null, importedStatement = null, importedStatementVisible = false) {
+function replaceProject(next, importedDerived = null, importedDisplay = null, importedStatement = null, importedStatementVisible = false, importedMetadata) {
+  const now = new Date().toISOString(), nextMetadata = readExerciseMetadata(importedMetadata === undefined ? { createdAt: now, updatedAt: now, classTags: [] } : importedMetadata);
   const nextModel = ER.validate(next), nextStatement = readStatement(importedStatement);
   if (exercises.length >= 100) throw Error('Sono già salvati 100 esercizi. Elimina un esercizio prima di aggiungerne un altro.');
   if (!closeEditor()) return false;
   saveCurrentExercise(); activeExerciseId = ER.uid();
   model = nextModel; derived = importedDerived; display = ER.displayOptions(importedDisplay);
+  exerciseMetadata = nextMetadata;
   statement = nextStatement; statementVisible = !!statement && importedStatementVisible === true; stage = 'initial';
   selected = ''; textDirty = false; history.length = future.length = 0;
   $('schema-text').value = ER.serialize(model); draw(); persist(); boundsView(); tab('structure', false); return true;
@@ -815,7 +919,7 @@ $('file-input').addEventListener('change', async event => {
   try {
     if (file.size > 10000000) throw Error('Il file supera il limite di 10 MB.');
     const raw = JSON.parse(await file.text()), next = ER.validate(raw.model || raw), importedDerived = readDerived(raw.derived);
-    if (replaceProject(next, importedDerived, raw.display, raw.statement, raw.statementVisible)) notify('Progetto aperto. Schema iniziale e ristrutturazione sono conservati.');
+    if (replaceProject(next, importedDerived, raw.display, raw.statement, raw.statementVisible, raw.metadata ?? null)) notify('Progetto aperto. Schema iniziale e ristrutturazione sono conservati.');
   } catch (error) { notify(`Impossibile aprire il progetto: ${error.message}`); }
 });
 const filename = () => model.title.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'schema-er';
@@ -864,7 +968,7 @@ $('export-form').addEventListener('submit', async event => {
   event.preventDefault(); $('export-error').hidden = true;
   const button = $('export-download'); button.disabled = true; button.textContent = 'Esportazione in corso…';
   const action = exportAction, includeData = $('export-data').checked, fromDatabase = $('export-source').value === 'database';
-  const project = { ...ER.copy(model), derived: derived ? ER.copy(derived) : null, display: ER.copy(display), statement: ER.copy(statement), statementVisible };
+  const project = { ...ER.copy(model), derived: derived ? ER.copy(derived) : null, display: ER.copy(display), statement: ER.copy(statement), statementVisible, metadata: ER.copy(exerciseMetadata) };
   $('export-source').disabled = true; $('export-data').disabled = true;
   try {
     const snapshot = includeData || (action === 'sql' && fromDatabase) ? await lab.exportDatabase(includeData) : null;

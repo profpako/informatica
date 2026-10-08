@@ -44,6 +44,25 @@ test('schema relazionale: PK, FK composte, 1:N, N:M, 1:1, ricorsione e minimi re
   assert.throws(() => ER.relational(ER.parse('ENTITA: SenzaChiave')), /identificatore/);
 });
 
+test('Manual relation names preserve keys, update references and reject duplicate or invalid names', () => {
+  const model = ER.parse('ENTITA: proprietario\n- id [ID]\nENTITA: auto\n- id [ID]\nASSOCIAZIONE: possiede: proprietario [1,N] -> auto [0,1]\nASSOCIAZIONE: utilizza: proprietario [0,N] -> auto [0,N]');
+  const original = ER.relational(model), [owner, car, uses] = original.tables;
+  const before = JSON.stringify(model);
+  const names = { [owner.id]: ' titolari ', [uses.id]: 'usi', deleted_entity: 'ignorato' };
+  const changed = ER.relational(model, names);
+  assert.deepEqual(changed.tables, original.tables.map(t => ({ ...t, name: t.id === owner.id ? 'titolari' : t.id === uses.id ? 'usi' : t.name })));
+  assert.deepEqual(changed.nameOverrides, { [owner.id]: 'titolari', [uses.id]: 'usi' });
+  assert.deepEqual(changed.participation, original.participation);
+  assert.match(ER.relationalText(changed), /-> titolari\(id\)/);
+  assert.ok(changed.report.some(text => text.includes('verso titolari')));
+  assert.ok(changed.report.some(text => text.includes('relazione usi')));
+  assert.ok(changed.constraints.some(text => text.includes('istanza di titolari')));
+  for (const value of ['', '  ', '\u0000', 'x'.repeat(65), 3, null]) assert.throws(() => ER.relational(model, { [owner.id]: value }), /nome della relazione/);
+  assert.throws(() => ER.relational(model, { [owner.id]: car.name.toUpperCase() }), /duplicato/);
+  assert.throws(() => ER.relational(model, []), /non validi/);
+  assert.equal(JSON.stringify(model), before);
+});
+
 test('Entity relations use plural names and id-first foreign key names', () => {
   const source = ER.parse(require('node:fs').readFileSync(require.resolve('./fixtures/farmacia.txt'), 'utf8'));
   const r = ER.relational(ER.restructure(source).model);
@@ -59,6 +78,8 @@ test('Entity relations use plural names and id-first foreign key names', () => {
   assert.equal(source.entities[0].name, 'medicinale');
   const compound = ER.relational(ER.parse('ENTITA: numero di telefono\n- id [ID]\nENTITA: indirizzo di spedizione\n- id [ID]'));
   assert.deepEqual(compound.tables.map(t => t.name), ['numeri di telefono', 'indirizzi di spedizione']);
+  const owners = ER.relational(ER.parse('ENTITA: proprietario\n- id [ID]\nENTITA: proprietari\n- id [ID]\nENTITA: Inventario\n- id [ID]\nENTITA: NOTARIO\n- id [ID]'));
+  assert.deepEqual(owners.tables.map(t => t.name), ['proprietari', 'proprietari_2', 'Inventari', 'NOTARI']);
   const roles = ER.relational(ER.parse('ENTITA: Utente\n- id [ID]\nASSOCIAZIONE: segue: Utente (follower) [0,N] -> Utente (seguito_da) [0,N]'));
   assert.deepEqual(roles.tables.find(t => t.name === 'segue').primaryKey, ['id_follower', 'id_seguito_da']);
 });

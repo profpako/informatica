@@ -6,7 +6,12 @@
   const numeric = /^(TINYINT|SMALLINT|MEDIUMINT|INT|BIGINT|DECIMAL|FLOAT|DOUBLE)/;
   const unindexed = /^(TINYTEXT|TEXT|MEDIUMTEXT|LONGTEXT|TINYBLOB|BLOB|MEDIUMBLOB|LONGBLOB|JSON)$/;
   const presets = ['MEDIUMINT', 'INT', 'SMALLINT', 'BIGINT', 'VARCHAR(50)', 'VARCHAR(100)', 'VARCHAR(255)', 'VARCHAR(2048)', 'CHAR(1)', 'TEXT', 'TINYTEXT', 'DECIMAL(10,2)', 'BOOLEAN', 'DATE', 'TIME', 'DATETIME', 'TIMESTAMP', 'YEAR', 'JSON'];
-  const sqlIdentifier = value => '`' + value.replace(/`/g, '``') + '`';
+  function sqlIdentifier(value, quoted = true) {
+    if (quoted) return '`' + value.replace(/`/g, '``') + '`';
+    // ponytail: MySQL checks reserved words at execution; reject unsafe unquoted characters here.
+    if (!/^[\p{L}_$][\p{L}\p{N}_$]*$/u.test(value) || /[^\u0000-\uffff]/u.test(value)) throw Error(`Il nome «${value}» richiede i backtick. Abilita Usa backtick oppure usa lettere, numeri e underscore, iniziando con una lettera o underscore.`);
+    return value;
+  }
   function identifier(value, context) {
     if (typeof value !== 'string' || !value.trim() || value.length > 64 || /[\u0000-\u001f\u007f]/.test(value) || /\s$/.test(value)) throw Error(`${context}: nome SQL di 1–64 caratteri, senza caratteri di controllo o spazi finali.`);
     return value;
@@ -107,7 +112,7 @@
     return result;
   }
   function physical(relational) {
-    const result = { database: relational.title.toLowerCase().replace(/[^\p{L}\p{N}_]+/gu, '_').replace(/^_|_$/g, '').slice(0, 64) || 'schema_db', createDatabase: true, ifNotExists: true, includeEngine: false, includeCharset: false,
+    const result = { database: relational.title.toLowerCase().replace(/[^\p{L}\p{N}_]+/gu, '_').replace(/^_|_$/g, '').slice(0, 64) || 'schema_db', createDatabase: true, ifNotExists: true, includeEngine: false, includeCharset: false, quoteIdentifiers: true,
       tables: relational.tables.map(t => ({ ...ER.copy(t), name: t.name.toLowerCase(), checks: [],
         columns: t.columns.map(c => ({ ...c, type: 'VARCHAR(100)', unsigned: false, unique: false, default: '', ...suggestedType(c.name, t.primaryKey.includes(c.name), t.name), autoIncrement: t.primaryKey.length === 1 && t.primaryKey[0] === c.name && c.name.toLowerCase() === 'id' && !t.foreignKeys.some(f => f.columns.includes(c.name)) })),
         foreignKeys: t.foreignKeys.map(f => ({ ...ER.copy(f), onDelete: '', onUpdate: '' })) })) };
@@ -155,16 +160,20 @@
     if (!raw || !Array.isArray(raw.tables) || !raw.tables.length || raw.tables.length !== relational.tables.length || typeof raw.createDatabase !== 'boolean' || typeof raw.ifNotExists !== 'boolean') throw Error('Schema fisico non valido.');
     // Older saved projects always emitted both clauses; preserve that behavior on import.
     if (['includeEngine', 'includeCharset'].some(flag => raw[flag] != null && typeof raw[flag] !== 'boolean')) throw Error('Opzioni ENGINE/CHARSET non valide.');
-    const result = { database: identifier(raw.database, 'Database'), createDatabase: raw.createDatabase, ifNotExists: raw.ifNotExists, includeEngine: raw.includeEngine ?? true, includeCharset: raw.includeCharset ?? true, tables: [] }, names = new Set();
+    if (raw.quoteIdentifiers != null && typeof raw.quoteIdentifiers !== 'boolean') throw Error('Opzione backtick non valida.');
+    const result = { database: identifier(raw.database, 'Database'), createDatabase: raw.createDatabase, ifNotExists: raw.ifNotExists, includeEngine: raw.includeEngine ?? true, includeCharset: raw.includeCharset ?? true, quoteIdentifiers: raw.quoteIdentifiers ?? true, tables: [] }, names = new Set();
+    sqlIdentifier(result.database, result.quoteIdentifiers);
     relational.tables.forEach(base => {
       const t = raw.tables.find(t => t.id === base.id);
       if (!t || !Array.isArray(t.columns) || t.columns.length !== base.columns.length || JSON.stringify(t.primaryKey) !== JSON.stringify(base.primaryKey) || JSON.stringify(t.unique) !== JSON.stringify(base.unique) || !Array.isArray(t.foreignKeys) || t.foreignKeys.length !== base.foreignKeys.length || !Array.isArray(t.checks) || t.checks.length > 100) throw Error(`${base.name}: struttura fisica non corrispondente al relazionale.`);
       identifier(t.name, 'Tabella'); if (names.has(t.name.toLowerCase())) throw Error(`Nome di tabella SQL duplicato: ${t.name}.`); names.add(t.name.toLowerCase());
+      sqlIdentifier(t.name, result.quoteIdentifiers);
       const table = { id: t.id, name: t.name, primaryKey: [...base.primaryKey], unique: ER.copy(base.unique), foreignKeys: [], columns: [], checks: [] }, columnNames = new Set();
       base.columns.forEach(original => {
         const c = t.columns.find(c => c.name === original.name), context = `${t.name}.${original.name}`;
         if (!c) throw Error(`${context}: colonna mancante.`);
         identifier(c.name, 'Colonna'); if (columnNames.has(c.name.toLowerCase())) throw Error(`${context}: colonna duplicata.`); columnNames.add(c.name.toLowerCase());
+        sqlIdentifier(c.name, result.quoteIdentifiers);
         if (['nullable', 'unsigned', 'autoIncrement', 'unique'].some(flag => typeof c[flag] !== 'boolean')) throw Error(`${context}: opzioni non valide.`);
         const type = columnType(c.type), column = { name: c.name, type, nullable: c.nullable, unsigned: c.unsigned, autoIncrement: c.autoIncrement, unique: c.unique, default: '' };
         if (base.primaryKey.includes(c.name) && c.nullable) throw Error(`${context}: una PK non può ammettere NULL.`);
@@ -191,34 +200,38 @@
   }
   function physicalSQL(raw, relational) {
     const result = validatePhysical(raw, relational), sql = ['-- Schema fisico MySQL 8.0.16+'], done = new Set(), deferred = [];
-    const quoteList = list => list.map(sqlIdentifier).join(', ');
-    if (result.createDatabase) sql.push(`CREATE DATABASE${result.ifNotExists ? ' IF NOT EXISTS' : ''} ${sqlIdentifier(result.database)}${result.includeCharset ? ' DEFAULT CHARACTER SET utf8mb4' : ''};`);
-    sql.push(`USE ${sqlIdentifier(result.database)};`, '');
+    const nameSQL = value => sqlIdentifier(value, result.quoteIdentifiers);
+    const quoteList = list => list.map(nameSQL).join(', ');
+    if (result.createDatabase) sql.push(`CREATE DATABASE${result.ifNotExists ? ' IF NOT EXISTS' : ''} ${nameSQL(result.database)}${result.includeCharset ? ' DEFAULT CHARACTER SET utf8mb4' : ''};`);
+    sql.push(`USE ${nameSQL(result.database)};`, '');
     function foreignKey(f) {
       const target = result.tables.find(t => t.id === f.target);
-      return `FOREIGN KEY (${quoteList(f.columns)}) REFERENCES ${sqlIdentifier(target.name)} (${quoteList(f.references)})` + (f.onDelete ? ` ON DELETE ${f.onDelete}` : '') + (f.onUpdate ? ` ON UPDATE ${f.onUpdate}` : '');
+      return `FOREIGN KEY (${quoteList(f.columns)}) REFERENCES ${nameSQL(target.name)} (${quoteList(f.references)})` + (f.onDelete ? ` ON DELETE ${f.onDelete}` : '') + (f.onUpdate ? ` ON UPDATE ${f.onUpdate}` : '');
     }
     const pending = [...result.tables];
     while (pending.length) {
       const index = pending.findIndex(t => t.foreignKeys.every(f => f.target === t.id || done.has(f.target))), t = pending.splice(index < 0 ? 0 : index, 1)[0];
       const lines = t.columns.map(c => {
-        let definition = `${sqlIdentifier(c.name)} ${c.type}${c.unsigned ? ' UNSIGNED' : ''}${c.autoIncrement ? ' AUTO_INCREMENT' : ''}${c.unique && !(t.primaryKey.length === 1 && t.primaryKey[0] === c.name) ? ' UNIQUE' : ''}${c.nullable ? '' : ' NOT NULL'}`;
+        let definition = `${nameSQL(c.name)} ${c.type}${c.unsigned ? ' UNSIGNED' : ''}${c.autoIncrement ? ' AUTO_INCREMENT' : ''}${c.unique && !(t.primaryKey.length === 1 && t.primaryKey[0] === c.name) ? ' UNIQUE' : ''}${c.nullable ? '' : ' NOT NULL'}`;
         if (c.default) definition += ` DEFAULT ${unindexed.test(c.type) ? '(' + c.default + ')' : c.default}`;
         return definition;
       });
       lines.push(`PRIMARY KEY (${quoteList(t.primaryKey)})`);
       t.unique.filter(u => u.length !== 1 || !t.columns.find(c => c.name === u[0]).unique).forEach(u => lines.push(`UNIQUE (${quoteList(u)})`));
       t.foreignKeys.forEach(f => { if (f.target === t.id || done.has(f.target)) lines.push(foreignKey(f)); else deferred.push({ table: t, fk: f }); });
-      t.checks.forEach((expression, i) => lines.push(`CONSTRAINT ${sqlIdentifier('ck_' + t.name.slice(0, 40) + '_' + (result.tables.indexOf(t) + 1) + '_' + (i + 1))} CHECK (${expression})`));
-      sql.push(`CREATE TABLE${result.ifNotExists ? ' IF NOT EXISTS' : ''} ${sqlIdentifier(t.name)} (\n  ${lines.join(',\n  ')}\n)${result.includeEngine ? ' ENGINE=InnoDB' : ''}${result.includeCharset ? ' DEFAULT CHARSET=utf8mb4' : ''};`, ''); done.add(t.id);
+      t.checks.forEach((expression, i) => {
+        const check = result.quoteIdentifiers ? expression : expression.replace(/'(?:''|[^'])*'|`(?:``|[^`])*`/g, token => token.startsWith("'") ? token : nameSQL(token.slice(1, -1).replace(/``/g, '`')));
+        lines.push(`CONSTRAINT ${nameSQL('ck_' + t.name.slice(0, 40) + '_' + (result.tables.indexOf(t) + 1) + '_' + (i + 1))} CHECK (${check})`);
+      });
+      sql.push(`CREATE TABLE${result.ifNotExists ? ' IF NOT EXISTS' : ''} ${nameSQL(t.name)} (\n  ${lines.join(',\n  ')}\n)${result.includeEngine ? ' ENGINE=InnoDB' : ''}${result.includeCharset ? ' DEFAULT CHARSET=utf8mb4' : ''};`, ''); done.add(t.id);
     }
-    deferred.forEach(({ table, fk }) => sql.push(`ALTER TABLE ${sqlIdentifier(table.name)} ADD ${foreignKey(fk)};`));
+    deferred.forEach(({ table, fk }) => sql.push(`ALTER TABLE ${nameSQL(table.name)} ADD ${foreignKey(fk)};`));
     if (relational.constraints.length) sql.push('', '-- Vincoli residui: da gestire con controlli applicativi o trigger.', ...relational.constraints.map(c => '-- ' + c.replace(/[\r\n]/g, ' ')));
     return sql.join('\n');
   }
   function restorePhysical(raw, previous, relational, renames = {}) {
     const old = validatePhysical(raw, previous), result = physical(relational);
-    ['database', 'createDatabase', 'ifNotExists', 'includeEngine', 'includeCharset'].forEach(key => { result[key] = old[key]; });
+    ['database', 'createDatabase', 'ifNotExists', 'includeEngine', 'includeCharset', 'quoteIdentifiers'].forEach(key => { result[key] = old[key]; });
     const maps = new Map(result.tables.map(t => [t.id, Object.assign(Object.create(null), Object.hasOwn(renames, t.id) ? renames[t.id] : {})]));
     // Propagate renamed key components through external identifiers before restoring column choices.
     for (let pass = 0; pass < result.tables.length; pass++) {

@@ -30,7 +30,7 @@ test('Database name can be applied beside its field and survives project storage
   assert.match(markup.slice(markup.indexOf('id="physical-database"'), markup.indexOf('class="physical-options"')), /type="submit"[^>]*>Applica scelte SQL/);
   assert.ok(markup.indexOf('id="physical-error"') < markup.indexOf('class="physical-table-control"'));
   $('physical-database').value = 'farmacia'; $('physical-table-name').value = table.name;
-  $('physical-create-database').checked = true; $('physical-if-not-exists').checked = true;
+  $('physical-create-database').checked = true; $('physical-if-not-exists').checked = true; $('physical-quote-identifiers').checked = true;
   handlers.submit({ target: { id: 'physical-form' }, preventDefault() {} });
   const restored = JSON.parse(saved);
   assert.equal(restored.physical.database, 'farmacia');
@@ -38,6 +38,36 @@ test('Database name can be applied beside its field and survives project storage
   assert.match(ER.physicalSQL(restored.physical, restored.relational), /USE `farmacia`;/);
   assert.match($('physical-panel').innerHTML, /id="physical-database" value="farmacia"/);
   assert.equal(context.formDirty, false);
+});
+
+test('Backtick choices cover SQL names, keys and CHECK identifiers while preserving literal text and saved choices', () => {
+  const r = ER.relational(ER.parse('ENTITA: Cliente\n- id [ID]\n- nome\nENTITA: Ordine\n- id [ID]\nASSOCIAZIONE: effettua: Cliente [0,N] -> Ordine [1,1]'));
+  const p = ER.physical(r), original = ER.copy(p);
+  assert.equal(p.quoteIdentifiers, true);
+  const legacy = ER.copy(p); delete legacy.quoteIdentifiers;
+  assert.equal(ER.validatePhysical(legacy, r).quoteIdentifiers, true);
+  p.quoteIdentifiers = false;
+  p.tables[0].checks = ["`nome` <> 'test`o' AND LENGTH(`nome`) > 0"];
+  p.tables[0].columns.find(c => c.name === 'nome').default = "'con`backtick'";
+  const sql = ER.physicalSQL(p, r);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS clienti/);
+  assert.match(sql, /PRIMARY KEY \(id\)/);
+  assert.match(sql, /FOREIGN KEY \(id_cliente\) REFERENCES clienti \(id\)/);
+  assert.match(sql, /CONSTRAINT ck_clienti_1_1 CHECK \(nome <> 'test`o' AND LENGTH\(nome\) > 0\)/);
+  assert.match(sql, /DEFAULT 'con`backtick'/);
+  assert.deepEqual(ER.validatePhysical(JSON.parse(JSON.stringify(p)), r), p);
+  assert.equal(ER.restorePhysical(p, r, r).quoteIdentifiers, false);
+  const invalid = ER.copy(p); invalid.quoteIdentifiers = 'false';
+  assert.throws(() => ER.validatePhysical(invalid, r), /backtick non valida/);
+  invalid.quoteIdentifiers = false; invalid.tables[0].name = 'nome; DROP TABLE ordini';
+  assert.throws(() => ER.physicalSQL(invalid, r), /richiede i backtick/);
+  invalid.tables[0].name = 'nome con spazi';
+  assert.throws(() => ER.validatePhysical(invalid, r), /richiede i backtick/);
+  invalid.quoteIdentifiers = true;
+  assert.match(ER.physicalSQL(invalid, r), /CREATE TABLE IF NOT EXISTS `nome con spazi`/);
+  p.quoteIdentifiers = true;
+  assert.match(ER.physicalSQL(p, r), /REFERENCES `clienti` \(`id`\)/);
+  assert.equal(original.tables[0].checks.length, 0);
 });
 
 test('MySQL proposal follows TikTok conventions and preserves editable choices', () => {
@@ -134,10 +164,15 @@ test('MySQL handles composite optional FKs and cyclic table dependencies', () =>
   assert.match(ER.physicalSQL(p, r), /FOREIGN KEY \(`id_a_prefisso`, `id_a_numero`\)/);
   p.tables[0].columns[0].unique = true;
   assert.match(ER.physicalSQL(p, r), /`prefisso` VARCHAR\(50\) UNIQUE NOT NULL/);
+  p.quoteIdentifiers = false;
+  assert.doesNotMatch(ER.physicalSQL(p, r), /`/, 'Composite keys and generated CHECK identifiers follow the option');
   const cycle = ER.relational(ER.parse('ENTITA: A\n- id [ID]\nENTITA: B\n- id [ID]\nASSOCIAZIONE: ab: A [0,1] -> B [0,N]\nASSOCIAZIONE: ba: B [0,1] -> A [0,N]'));
   const sql = ER.physicalSQL(ER.physical(cycle), cycle);
   assert.ok(sql.indexOf('ALTER TABLE') > sql.lastIndexOf('CREATE TABLE'));
   assert.equal((sql.match(/FOREIGN KEY/g) || []).length, 2);
+  const unquotedCycle = ER.physical(cycle); unquotedCycle.quoteIdentifiers = false;
+  assert.match(ER.physicalSQL(unquotedCycle, cycle), /ALTER TABLE \w+ ADD FOREIGN KEY \(\w+\) REFERENCES \w+ \(id\)/);
+  assert.doesNotMatch(ER.physicalSQL(unquotedCycle, cycle), /`/);
   const named = ER.relational(ER.parse('ENTITA: ordine`speciale\n- id [ID]'));
   assert.match(ER.physicalSQL(ER.physical(named), named), /`ordini``speciali`/);
 });

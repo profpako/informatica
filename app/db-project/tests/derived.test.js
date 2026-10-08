@@ -8,6 +8,24 @@ require('../restructure'); require('../relational'); require('../physical');
 const app = fs.readFileSync(require.resolve('../app.js'), 'utf8');
 const readDerived = vm.runInNewContext(app.slice(app.indexOf('function readDerived(raw)'), app.indexOf('const shownModel')) + '\nreadDerived', { ER });
 
+test('Manual relation names survive load and SQL restoration without losing applied choices', () => {
+  const source = ER.parse('ENTITA: proprietario\n- id [ID]\n- cf\nENTITA: auto\n- id [ID]\nASSOCIAZIONE: possiede: proprietario [1,N] -> auto [1,1]');
+  const raw = { ...ER.restructure(source), signature: ER.serialize(source) }, id = source.entities[0].id;
+  raw.relational = ER.relational(raw.model, { [id]: 'titolari' });
+  raw.physical = ER.physical(raw.relational);
+  raw.physical.tables[0].columns.find(c => c.name === 'cf').type = 'CHAR(16)';
+  raw.physical.tables[0].checks = ["cf <> ''"];
+  raw.physical.includeEngine = true;
+  const loaded = readDerived(JSON.parse(JSON.stringify(raw)));
+  assert.deepEqual(loaded.relational.nameOverrides, { [id]: 'titolari' });
+  assert.equal(loaded.relational.tables[0].name, 'titolari');
+  assert.equal(loaded.physical.tables[0].columns.find(c => c.name === 'cf').type, 'CHAR(16)');
+  assert.deepEqual(loaded.physical.tables[0].checks, ["cf <> ''"]);
+  assert.equal(loaded.physical.includeEngine, true);
+  assert.match(ER.physicalSQL(loaded.physical, loaded.relational), /REFERENCES `titolari`/);
+  assert.throws(() => readDerived({ ...raw, relational: { ...raw.relational, nameOverrides: { [id]: '' } } }), /nome della relazione/);
+});
+
 test('Loading an old multivalue derivation adds id, renames FKs and preserves applied SQL choices', () => {
   const original = ER.parse('ENTITA: ditta\n- id [ID]\n- n_telefono [1,N]');
   const legacy = ER.restructure(original), [owner, phone] = legacy.model.entities;
