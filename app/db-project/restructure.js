@@ -3,7 +3,7 @@
   const ER = typeof module !== 'undefined' && module.exports ? require('./model.js') : root.ER;
   const blank = (name, attributes = []) => ({ id: ER.uid(), name, attributes, x: 0, y: 0, side: 'top', attributePositions: {} });
   const plain = (name, key = false, cardinality = '1,1') => ({ name, key, cardinality });
-  function restructure(source) {
+  function restructure(source, display = {}) {
     const model = ER.validate(ER.copy(source)), report = [], constraints = [...(model.constraints || [])];
     const entity = id => model.entities.find(e => e.id === id);
     const unique = (base, list) => {
@@ -154,7 +154,7 @@
     }
     [...model.entities, ...model.relationships].forEach(n => { n.attributes = flatten(n, n.attributes); n.attributePositions = {}; if (n.attributeSides) n.attributeSides = {}; });
     model.constraints = [...new Set(constraints)];
-    return { model: ER.layout(ER.validate(model)), report };
+    return { model: ER.layout(ER.validate(model), display), report };
   }
   ER.restructure = restructure;
   function upgradeMultivalues(raw) {

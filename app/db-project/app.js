@@ -7,9 +7,11 @@ let model = ER.example(), selected = '', editing = null, formDirty = false, text
 let derived = null, stage = 'initial';
 let relationalView = 'compact';
 let display = ER.displayOptions();
+let statement = null, statementVisible = false, statementDraft = null, statementURL = '', renderedStatement = null;
 let physicalTableId = '';
+let exercises = [], activeExerciseId = 'tiktok', deletedExercise = null, libraryLoaded = false;
 let view = { x: 0, y: 0, w: 1000, h: 700 }, drag = null, toastTimer, storageAvailable = true;
-let draftText = '', firstResize = true, lastCanvasSize = { w: 0, h: 0 };
+let draftText = null, firstResize = true, lastCanvasSize = { w: 0, h: 0 };
 try {
   const stored = localStorage.getItem(storageKey);
   if (stored) {
@@ -19,8 +21,20 @@ try {
     stage = record.stage === 'lab' ? 'lab' : record.stage === 'physical' && derived?.physical ? 'physical' : record.stage === 'relational' && derived?.relational ? 'relational' : record.stage === 'restructured' && derived ? 'restructured' : 'initial';
     relationalView = record.relationalView === 'tables' ? 'tables' : 'compact';
     display = ER.displayOptions(record.display);
-    draftText = typeof record.draft === 'string' && record.draft.length <= 1000000 ? record.draft : '';
-    textDirty = !!draftText && draftText !== ER.serialize(model);
+    statement = readStatement(record.statement);
+    statementVisible = !!statement && record.statementVisible === true;
+    draftText = typeof record.draft === 'string' && record.draft.length <= 1000000 ? record.draft : null;
+    textDirty = draftText != null && draftText !== ER.serialize(model);
+    if (Array.isArray(record.exercises)) {
+      if (record.exercises.length > 100) throw Error('Elenco degli esercizi non valido.');
+      const ids = new Set();
+      exercises = record.exercises.map(item => {
+        if (!item || typeof item.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(item.id) || ids.has(item.id)) throw Error('Esercizio salvato non valido.');
+        ids.add(item.id); return { id: item.id, record: readExerciseRecord(item.record) };
+      });
+      activeExerciseId = typeof record.activeExerciseId === 'string' && /^[a-zA-Z0-9_-]{0,80}$/.test(record.activeExerciseId) ? record.activeExerciseId : ER.uid();
+      libraryLoaded = true;
+    } else if (ER.serialize(model) !== ER.serialize(ER.example())) activeExerciseId = ER.uid();
   }
 } catch (error) {
   storageAvailable = false;
@@ -28,7 +42,9 @@ try {
   setTimeout(() => notify('Il progetto salvato non è leggibile o la memoria è bloccata. Esporta il JSON per conservare il lavoro.'), 200);
 }
 $('diagram-style').textContent = ER.svgStyle;
-$('schema-text').value = draftText || ER.serialize(model);
+$('schema-text').value = draftText ?? ER.serialize(model);
+if (!libraryLoaded) exercises = ['tiktok', 'restructured', 'school', 'extended'].map(id => ({ id, record: readExerciseRecord({ model: exampleModel(id) }) }));
+saveCurrentExercise();
 
 function readDerived(raw) {
   if (!raw) return null;
@@ -42,6 +58,117 @@ function readDerived(raw) {
   return loaded;
 }
 const shownModel = () => stage !== 'initial' && derived ? derived.model : model;
+function currentExerciseRecord() {
+  return { model, derived, stage, relationalView, display, statement, statementVisible, draft: $('schema-text').value };
+}
+function readExerciseRecord(raw) {
+  if (!raw || typeof raw !== 'object') throw Error('Esercizio non valido.');
+  const loadedModel = ER.validate(raw.model), loadedDerived = readDerived(raw.derived), loadedStatement = readStatement(raw.statement);
+  const loadedStage = raw.stage === 'lab' ? 'lab' : raw.stage === 'physical' && loadedDerived?.physical ? 'physical' : raw.stage === 'relational' && loadedDerived?.relational ? 'relational' : raw.stage === 'restructured' && loadedDerived ? 'restructured' : 'initial';
+  if (raw.draft != null && (typeof raw.draft !== 'string' || raw.draft.length > 1000000)) throw Error('Bozza dell’esercizio non valida.');
+  return { model: loadedModel, derived: loadedDerived, stage: loadedStage, relationalView: raw.relationalView === 'tables' ? 'tables' : 'compact', display: ER.displayOptions(raw.display), statement: loadedStatement, statementVisible: !!loadedStatement && raw.statementVisible === true, draft: raw.draft ?? ER.serialize(loadedModel) };
+}
+function saveCurrentExercise() {
+  if (!activeExerciseId) {
+    if (!model.entities.length && !statement && !textDirty && model.title === 'Nuovo schema') return;
+    activeExerciseId = ER.uid();
+  }
+  const item = { id: activeExerciseId, record: ER.copy(currentExerciseRecord()) }, index = exercises.findIndex(e => e.id === activeExerciseId);
+  if (index < 0) exercises.push(item); else exercises[index] = item;
+}
+function applyExerciseRecord(record) {
+  model = record.model; derived = record.derived; stage = record.stage; relationalView = record.relationalView; display = record.display;
+  statement = record.statement; statementVisible = record.statementVisible;
+  $('schema-text').value = record.draft; textDirty = record.draft !== ER.serialize(model);
+  selected = ''; history.length = future.length = 0;
+}
+function openExercise(id) {
+  const item = exercises.find(e => e.id === id); if (!item || !closeEditor()) return false;
+  saveCurrentExercise(); activeExerciseId = id; applyExerciseRecord(readExerciseRecord(item.record));
+  draw(); persist(); boundsView(); tab('structure', false); return true;
+}
+function renderExercises() {
+  $('example-select').innerHTML = '<option value="">Scegli un esercizio…</option>' + exercises.map(e => `<option value="${ER.escape(e.id)}">${ER.escape(e.record.model.title)}</option>`).join('');
+  $('example-select').value = activeExerciseId;
+  $('exercises-list').innerHTML = exercises.map(e => `<div class="exercise-row"><div><strong>${ER.escape(e.record.model.title)}</strong><small>${e.id === activeExerciseId ? 'Aperto · ' : ''}${e.record.model.entities.length} entità · ${e.record.statement ? 'Traccia presente' : 'Nessuna traccia'}</small></div><button class="button subtle" data-open-exercise="${ER.escape(e.id)}">Apri</button><button class="icon-button danger" data-delete-exercise="${ER.escape(e.id)}" aria-label="Elimina esercizio ${ER.escape(e.record.model.title)}">${icon('trash')}</button></div>`).join('') || '<p>Nessun esercizio salvato. Usa Nuovo o Apri per aggiungerne uno.</p>';
+  $('restore-exercise').hidden = !deletedExercise;
+}
+$('exercises-button').addEventListener('click', () => { saveCurrentExercise(); renderExercises(); $('exercises-error').hidden = true; $('exercises-dialog').showModal(); });
+$('exercises-close').addEventListener('click', () => $('exercises-dialog').close());
+$('exercises-list').addEventListener('click', event => {
+  const open = event.target.closest('[data-open-exercise]');
+  if (open) { if (openExercise(open.dataset.openExercise)) $('exercises-dialog').close(); return; }
+  const button = event.target.closest('[data-delete-exercise]'); if (!button) return;
+  const item = exercises.find(e => e.id === button.dataset.deleteExercise); if (!item) return;
+  if (item.id === activeExerciseId && !formCanClose()) return;
+  if (!confirm(`Eliminare l’esercizio «${item.record.model.title}», compresi schemi e traccia?`)) return;
+  if (!storageAvailable) { errorIn('exercises-error', 'La memoria del browser non è disponibile. Ricarica l’app prima di eliminare esercizi.'); return; }
+  saveCurrentExercise();
+  const previous = { exercises: exercises.slice(), id: activeExerciseId, record: ER.copy(currentExerciseRecord()) };
+  const removed = exercises.find(e => e.id === item.id);
+  exercises = exercises.filter(e => e.id !== item.id);
+  if (item.id === activeExerciseId) {
+    closeEditor(false); activeExerciseId = exercises[0]?.id || '';
+    applyExerciseRecord(exercises[0] ? readExerciseRecord(exercises[0].record) : readExerciseRecord({ model: { version: 1, title: 'Nuovo schema', entities: [], relationships: [] } }));
+  }
+  if (!persist()) {
+    exercises = previous.exercises; activeExerciseId = previous.id; applyExerciseRecord(previous.record);
+    draw(); errorIn('exercises-error', 'Eliminazione non salvata: l’elenco è stato ripristinato.'); return;
+  }
+  deletedExercise = removed; draw(); boundsView(); renderExercises();
+  notify('Esercizio eliminato. Puoi ripristinarlo dalla gestione esercizi.');
+});
+$('restore-exercise').addEventListener('click', () => {
+  if (!deletedExercise) return;
+  if (exercises.length >= 100) { errorIn('exercises-error', 'Elimina un esercizio prima di ripristinarlo: sono già salvati 100 esercizi.'); return; }
+  exercises.push(deletedExercise);
+  if (persist()) { deletedExercise = null; renderExercises(); notify('Esercizio ripristinato.'); }
+  else { exercises = exercises.filter(e => e.id !== deletedExercise.id); renderExercises(); errorIn('exercises-error', 'Ripristino non salvato: memoria del browser non disponibile.'); }
+});
+function readStatement(raw) {
+  if (raw == null) return null;
+  if (!raw || typeof raw.name !== 'string' || !raw.name.trim() || raw.name.length > 200 || typeof raw.content !== 'string') throw Error('Traccia non valida.');
+  if (raw.type === 'text/plain') {
+    if (!raw.content.trim() || raw.content.length > 200000) throw Error('La traccia deve contenere testo, fino a 200.000 caratteri.');
+  } else {
+    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(raw.type) || raw.content.length > 2800000) throw Error('La traccia deve essere TXT, PDF, PNG, JPEG o WebP, fino a 2 MB.');
+    const prefix = `data:${raw.type};base64,`, data = raw.content.slice(prefix.length);
+    if (!raw.content.startsWith(prefix) || !data || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) throw Error('Il file della traccia non è valido.');
+    let decoded;
+    try { decoded = atob(data); } catch { throw Error('Il file della traccia non è valido.'); }
+    const valid = raw.type === 'application/pdf' ? decoded.startsWith('%PDF-') : raw.type === 'image/png' ? decoded.startsWith('\x89PNG\r\n\x1a\n') : raw.type === 'image/jpeg' ? decoded.startsWith('\xff\xd8\xff') : decoded.startsWith('RIFF') && decoded.slice(8, 12) === 'WEBP';
+    if (!valid || decoded.length > 2000000) throw Error('Il contenuto della traccia non corrisponde al formato o supera 2 MB.');
+  }
+  return { name: raw.name.trim(), type: raw.type, content: raw.content };
+}
+function renderStatement() {
+  const visible = !!statement && statementVisible && (diagramStage() || stage === 'lab');
+  if (visible && $('statement-panel').hidden) $('statement-panel').open = true;
+  $('statement-panel').hidden = !visible;
+  $('show-statement').disabled = !statement; $('show-statement').checked = !!statement && statementVisible;
+  $('statement-title').textContent = statement?.name || 'Traccia';
+  $('statement-panel').style.setProperty('--statement-font-size', `${display.fontSizes.statement}px`);
+  $('statement-panel').style.setProperty('--statement-height', `${display.statementHeight}px`);
+  $('statement-resize').setAttribute('aria-valuenow', display.statementHeight);
+  if (renderedStatement === statement) return;
+  renderedStatement = statement;
+  if (statementURL) { URL.revokeObjectURL(statementURL); statementURL = ''; }
+  $('statement-content').replaceChildren(); $('statement-open').hidden = !statement || statement.type === 'text/plain';
+  $('statement-open').removeAttribute('href');
+  if (!statement) return;
+  if (statement.type === 'text/plain') {
+    const text = document.createElement('p'); text.className = 'statement-text'; text.textContent = statement.content;
+    $('statement-content').append(text);
+  } else {
+    const bytes = Uint8Array.from(atob(statement.content.split(',')[1]), c => c.charCodeAt(0));
+    statementURL = URL.createObjectURL(new Blob([bytes], { type: statement.type }));
+    const preview = document.createElement(statement.type === 'application/pdf' ? 'iframe' : 'img');
+    preview.src = statementURL;
+    if (statement.type === 'application/pdf') preview.title = `Traccia: ${statement.name}`;
+    else preview.alt = `Traccia: ${statement.name}`;
+    $('statement-content').append(preview); $('statement-open').href = statementURL;
+  }
+}
 function diagramModel() {
   const active = shownModel();
   if (!editing?.preview || !editing.id) return active;
@@ -49,7 +176,7 @@ function diagramModel() {
   if (node) Object.assign(node, { side: editing.side, attributes: editing.previewAttributes, attributeSides: editing.attributeSides, attributePositions: editing.attributePositions });
   return preview;
 }
-const snapshot = () => ER.copy({ model, derived, stage, display });
+const snapshot = () => ER.copy({ model, derived, stage, display, statement, statementVisible, draft: $('schema-text').value });
 const diagramStage = () => stage === 'initial' || stage === 'restructured';
 function remember() { history.push(snapshot()); if (history.length > 60) history.shift(); future.length = 0; }
 
@@ -59,12 +186,14 @@ function notify(message) {
   clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('toast').hidden = true; }, 5500);
 }
 function persist() {
+  saveCurrentExercise(); renderExercises();
   if (storageAvailable) {
-    try { localStorage.setItem(storageKey, JSON.stringify({ model, derived, stage, relationalView, display, draft: $('schema-text').value })); }
+    try { localStorage.setItem(storageKey, JSON.stringify({ ...currentExerciseRecord(), activeExerciseId, exercises: exercises.filter(item => item.id !== activeExerciseId) })); }
     catch { storageAvailable = false; notify('Memoria locale non disponibile. Esporta il JSON per salvare il progetto.'); }
   }
   $('save-status').textContent = storageAvailable ? textDirty ? 'Bozza di testo salvata · da generare' : 'Salvato in questo browser' : 'Esporta il JSON per salvare';
   $('save-status').classList.toggle('warning', !storageAvailable);
+  return storageAvailable;
 }
 function boundsView() {
   if (!diagramStage()) return;
@@ -83,6 +212,8 @@ function updateView() {
 }
 function draw() {
   const active = shownModel();
+  renderStatement();
+  $('diagram-style').textContent = ER.diagramStyle(display);
   $('diagram-content').innerHTML = ER.render(diagramModel(), selected, display).markup;
   $('diagram-title').textContent = model.title + (stage === 'initial' ? ' · ER iniziale' : ' · ER ristrutturato');
   $('project-title').value = model.title;
@@ -92,11 +223,16 @@ function draw() {
   $('schema-counts').textContent = `${active.entities.length} entità · ${active.relationships.length} associazioni${active.hierarchies?.length ? ` · ${active.hierarchies.length} gerarchie` : ''}`;
   document.querySelector('.canvas-title span:nth-child(2)').textContent = stage === 'lab' ? 'Laboratorio delle query' : stage === 'physical' ? 'Schema fisico MySQL' : stage === 'relational' ? 'Schema relazionale' : 'Schema concettuale';
   document.querySelector('.notation').hidden = !diagramStage(); document.querySelector('.legend').hidden = !diagramStage();
-  document.querySelector('.notation').textContent = { university: 'ER universitario', uml: 'ER · UML style', both: 'ER · entrambe' }[display.cardinalityStyle];
-  $('display-menu').hidden = !diagramStage();
+  $('display-menu').hidden = !diagramStage() && stage !== 'lab';
+  document.querySelectorAll('[data-er-display]').forEach(element => { element.hidden = !diagramStage(); });
+  $('reset-fonts').textContent = stage === 'lab' ? 'Ripristina dimensione' : 'Ripristina dimensioni';
   $('cardinality-style').value = display.cardinalityStyle;
+  document.querySelector('.notation').textContent = $('cardinality-style').selectedOptions[0].textContent;
+  $('cardinality-style').title = $('cardinality-style').selectedOptions[0].textContent;
   $('show-relationship-type').checked = display.showRelationshipType;
-  const displayHint = display.cardinalityStyle === 'university' ? 'Le coppie (min,max) indicano le partecipazioni dell’entità vicina.' : 'Le massime UML (1 o N), in blu, si leggono rispetto all’altro partecipante.';
+  document.querySelectorAll('[data-font]').forEach(input => { input.value = display.fontSizes[input.dataset.font]; input.closest('.font-row').hidden = !diagramStage() && input.dataset.font !== 'statement'; });
+  document.querySelectorAll('[data-font-step]').forEach(button => { button.disabled = button.dataset.fontStep === '-1' ? display.fontSizes[button.dataset.fontTarget] <= 8 : display.fontSizes[button.dataset.fontTarget] >= 40; });
+  const displayHint = display.cardinalityStyle === 'university' ? 'Look Here: le coppie (min,max) indicano le partecipazioni dell’entità vicina.' : 'Look Across: le sole massime (1 o N), in blu, si leggono rispetto all’altro partecipante.';
   $('display-hint').textContent = displayHint + ' Cambia solo la visualizzazione.';
   $('cardinality-definition-hint').textContent = 'Definisci sempre minimo e massimo delle partecipazioni di ciascuna entità. ' + displayHint;
   document.querySelector('.drawing-area').setAttribute('aria-label', stage === 'physical' ? 'Schema fisico MySQL' : stage === 'relational' ? 'Schema relazionale' : 'Schema ER');
@@ -127,7 +263,7 @@ function draw() {
   $('restructure-report').hidden = !derived;
   $('report-content').innerHTML = derived ? `<h3>Trasformazioni applicate</h3><ul>${derived.report.map(s => `<li>${ER.escape(s)}</li>`).join('') || '<li>Lo schema contiene già solo costrutti semplici.</li>'}</ul><h3>Vincoli da conservare</h3><ul>${(derived.model.constraints || []).map(s => `<li>${ER.escape(s)}</li>`).join('') || '<li>Nessun vincolo aggiuntivo.</li>'}</ul>` : '';
   $('undo').disabled = !history.length; $('redo').disabled = !future.length;
-  renderList(); updateView();
+  renderList(); renderExercises(); updateView();
 }
 function renderList() {
   const section = (heading, list, kind) => `<section class="list-section"><div class="list-section-heading"><h2>${heading}<span class="item-count">${list.length}</span></h2><button class="icon-button" data-add="${kind}" title="Aggiungi ${kind === 'entity' ? 'entità' : 'associazione'}" aria-label="Aggiungi ${kind === 'entity' ? 'entità' : 'associazione'}" ${kind === 'relationship' && !model.entities.length ? 'disabled' : ''}>${icon('plus')}</button></div>${list.map(node => {
@@ -335,7 +471,7 @@ $('schema-stage').addEventListener('change', () => {
 $('restructure').addEventListener('click', () => {
   if (!closeEditor()) return;
   try {
-    const result = ER.restructure(model);
+    const result = ER.restructure(model, display);
     if (!canReplacePhysical()) return;
     remember(); derived = { ...result, signature: ER.serialize(model) }; stage = 'restructured'; selected = ''; draw(); boundsView(); persist();
     notify('ER ristrutturato generato. Lo schema iniziale è conservato.');
@@ -362,7 +498,7 @@ $('relational-generate').addEventListener('click', () => {
   } catch (error) { notify(`Traduzione non riuscita: ${error.message}`); }
 });
 function relationalCandidate() {
-  const signature = ER.serialize(model), candidate = !derived || derived.signature !== signature ? { ...ER.restructure(model), signature } : ER.copy(derived);
+  const signature = ER.serialize(model), candidate = !derived || derived.signature !== signature ? { ...ER.restructure(model, display), signature } : ER.copy(derived);
   candidate.relational = ER.relational(candidate.model);
   return candidate;
 }
@@ -448,7 +584,7 @@ $('physical-panel').addEventListener('click', async event => {
 $('schema-text').addEventListener('input', () => { textDirty = $('schema-text').value !== ER.serialize(model); $('text-error').hidden = true; persist(); });
 $('generate-text').addEventListener('click', () => {
   try {
-    const next = ER.parse($('schema-text').value);
+    const next = ER.parse($('schema-text').value, display);
     textDirty = false; selected = ''; closeEditor(false); commit(next, true);
     $('schema-text').value = ER.serialize(model); $('text-error').hidden = true; persist(); notify('Schema generato dalla descrizione.');
   } catch (error) { errorIn('text-error', error.message); }
@@ -457,35 +593,119 @@ $('project-title').addEventListener('change', () => {
   try { commit({ ...ER.copy(model), title: $('project-title').value.trim() }); }
   catch (error) { $('project-title').value = model.title; notify(error.message); }
 });
-function replaceProject(next, importedDerived = null, importedDisplay = null) {
-  if (!formCanClose()) return false;
-  if ((model.entities.length || textDirty) && !confirm('Vuoi sostituire lo schema corrente? La bozza di testo verrà sostituita. Esporta il JSON se vuoi conservarne una copia; lo schema attuale resta disponibile con Annulla.')) return false;
-  closeEditor(false); textDirty = false; selected = '';
-  if (JSON.stringify(next) === JSON.stringify(model)) remember();
-  commit(next, true);
-  derived = importedDerived; display = ER.displayOptions(importedDisplay); stage = 'initial'; draw(); boundsView();
-  $('schema-text').value = ER.serialize(model); persist(); tab('structure', false); return true;
+function replaceProject(next, importedDerived = null, importedDisplay = null, importedStatement = null, importedStatementVisible = false) {
+  const nextModel = ER.validate(next), nextStatement = readStatement(importedStatement);
+  if (exercises.length >= 100) throw Error('Sono già salvati 100 esercizi. Elimina un esercizio prima di aggiungerne un altro.');
+  if (!closeEditor()) return false;
+  saveCurrentExercise(); activeExerciseId = ER.uid();
+  model = nextModel; derived = importedDerived; display = ER.displayOptions(importedDisplay);
+  statement = nextStatement; statementVisible = !!statement && importedStatementVisible === true; stage = 'initial';
+  selected = ''; textDirty = false; history.length = future.length = 0;
+  $('schema-text').value = ER.serialize(model); draw(); persist(); boundsView(); tab('structure', false); return true;
 }
-$('new-project').addEventListener('click', () => { if (replaceProject({ version: 1, title: 'Nuovo schema', entities: [], relationships: [] })) notify('Nuovo progetto. Aggiungi la prima entità.'); });
-$('example-select').addEventListener('change', event => {
-  const chosen = event.target.value; event.target.value = ''; if (!chosen) return;
-  const next = chosen === 'extended' ? ER.parse(`TITOLO: Persone e corsi\nENTITA: Persona\n- codice [PK]\n- nome\n- indirizzo [0,1]\n  - via\n  - civico\n  - città\n- telefoni [0,N]\nENTITA: Studente\n- matricola\nENTITA: Docente\n- stipendio\nENTITA: Corso\n- codice [PK]\n- titolo\nASSOCIAZIONE: frequenta: Studente [1,N] -> Corso [0,N]\nASSOCIAZIONE: insegna: Docente [0,N] -> Corso [1,1]\nGERARCHIA: Persona [PARZIALE, ESCLUSIVA, PADRE] -> Studente, Docente`) : chosen === 'school' ? ER.parse(`TITOLO: Studenti e corsi\nENTITA: Studente\n- matricola [ID]\n- nome\n- email [0,1]\nENTITA: Corso\n- codice [ID]\n- titolo\nASSOCIAZIONE: frequenta: Studente [0,N] -> Corso [0,N]\n- data_iscrizione`) : ER.example(chosen === 'restructured');
-  if (replaceProject(next)) notify('Esempio caricato. Puoi modificarlo liberamente.');
+$('new-project').addEventListener('click', () => { try { if (replaceProject({ version: 1, title: 'Nuovo schema', entities: [], relationships: [] })) notify('Nuovo esercizio aggiunto. Aggiungi la prima entità.'); } catch (error) { notify(error.message); } });
+$('manage-statement').addEventListener('click', () => {
+  statementDraft = statement;
+  $('statement-text').value = statement?.type === 'text/plain' ? statement.content : '';
+  $('statement-file-name').textContent = statement ? `Traccia attuale: ${statement.name}` : 'Nessuna traccia caricata.';
+  $('statement-error').hidden = true; $('statement-remove').disabled = !statement;
+  $('statement-show').checked = statement ? statementVisible : true;
+  $('statement-dialog').showModal();
 });
+$('statement-text').addEventListener('input', () => {
+  statementDraft = $('statement-text').value.trim() ? { name: 'Traccia', type: 'text/plain', content: $('statement-text').value } : null;
+  $('statement-file-name').textContent = 'Traccia testuale.'; $('statement-error').hidden = true;
+});
+$('statement-file').addEventListener('change', async event => {
+  const file = event.target.files[0]; event.target.value = ''; if (!file) return;
+  const button = $('statement-apply'); button.disabled = true; $('statement-error').hidden = true;
+  try {
+    if (file.size > 2000000) throw Error('La traccia supera il limite di 2 MB.');
+    const type = /\.txt$/i.test(file.name) ? 'text/plain' : file.type;
+    let content;
+    if (type === 'text/plain') content = await file.text();
+    else content = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(Error('Impossibile leggere il file.')); reader.readAsDataURL(file); });
+    statementDraft = readStatement({ name: file.name, type, content });
+    $('statement-text').value = type === 'text/plain' ? content : '';
+    $('statement-file-name').textContent = `File selezionato: ${statementDraft.name}`;
+  } catch (error) { errorIn('statement-error', error.message); }
+  finally { button.disabled = false; }
+});
+$('statement-form').addEventListener('submit', event => {
+  event.preventDefault();
+  try {
+    const next = readStatement(statementDraft);
+    if (!next) throw Error('Carica un file oppure scrivi la traccia.');
+    remember(); statement = next; statementVisible = $('statement-show').checked;
+    $('statement-dialog').close(); draw(); persist(); notify('Traccia salvata nell’esercizio.');
+  } catch (error) { errorIn('statement-error', error.message); }
+});
+$('statement-remove').addEventListener('click', () => {
+  if (!statement || !confirm('Rimuovere la traccia da questo esercizio? Puoi recuperarla con Annulla.')) return;
+  remember(); statement = null; statementVisible = false;
+  $('statement-dialog').close(); draw(); persist(); notify('Traccia rimossa.');
+});
+$('statement-close').addEventListener('click', () => $('statement-dialog').close());
+let statementResize = null;
+function setStatementHeight(height) {
+  display = ER.displayOptions({ ...display, statementHeight: height });
+  renderStatement();
+}
+$('statement-resize').addEventListener('pointerdown', event => {
+  if (event.button !== 0 || statementResize) return;
+  event.preventDefault();
+  statementResize = { pointer: event.pointerId, y: event.clientY, height: $('statement-body').getBoundingClientRect().height, original: display.statementHeight };
+  $('statement-resize').setPointerCapture(event.pointerId);
+});
+$('statement-resize').addEventListener('pointermove', event => {
+  if (statementResize?.pointer === event.pointerId) setStatementHeight(statementResize.height + event.clientY - statementResize.y);
+});
+function finishStatementResize(event) {
+  if (statementResize?.pointer !== event.pointerId) return;
+  const original = statementResize.original; statementResize = null;
+  if ($('statement-resize').hasPointerCapture(event.pointerId)) $('statement-resize').releasePointerCapture(event.pointerId);
+  if (event.type === 'pointercancel') setStatementHeight(original);
+  else persist();
+}
+$('statement-resize').addEventListener('pointerup', finishStatementResize);
+$('statement-resize').addEventListener('pointercancel', finishStatementResize);
+$('statement-resize').addEventListener('lostpointercapture', finishStatementResize);
+$('statement-resize').addEventListener('keydown', event => {
+  const height = { ArrowUp: display.statementHeight - 10, ArrowDown: display.statementHeight + 10, Home: 48, End: 200 }[event.key];
+  if (height === undefined) return;
+  event.preventDefault(); setStatementHeight(height); persist();
+});
+function exampleModel(chosen) {
+  return chosen === 'extended' ? ER.parse(`TITOLO: Persone e corsi\nENTITA: Persona\n- codice [PK]\n- nome\n- indirizzo [0,1]\n  - via\n  - civico\n  - città\n- telefoni [0,N]\nENTITA: Studente\n- matricola\nENTITA: Docente\n- stipendio\nENTITA: Corso\n- codice [PK]\n- titolo\nASSOCIAZIONE: frequenta: Studente [1,N] -> Corso [0,N]\nASSOCIAZIONE: insegna: Docente [0,N] -> Corso [1,1]\nGERARCHIA: Persona [PARZIALE, ESCLUSIVA, PADRE] -> Studente, Docente`) : chosen === 'school' ? ER.parse(`TITOLO: Studenti e corsi\nENTITA: Studente\n- matricola [ID]\n- nome\n- email [0,1]\nENTITA: Corso\n- codice [ID]\n- titolo\nASSOCIAZIONE: frequenta: Studente [0,N] -> Corso [0,N]\n- data_iscrizione`) : ER.example(chosen === 'restructured');
+}
+$('example-select').addEventListener('change', event => { if (event.target.value && !openExercise(event.target.value)) event.target.value = activeExerciseId; });
 function travel(redo) {
   if (!closeEditor()) return;
   const from = redo ? future : history, to = redo ? history : future;
   if (!from.length) return;
   to.push(snapshot()); const previous = from.pop(); model = previous.model; derived = previous.derived; stage = previous.stage; display = ER.displayOptions(previous.display); selected = '';
-  if (!textDirty) $('schema-text').value = ER.serialize(model);
+  statement = readStatement(previous.statement); statementVisible = !!statement && previous.statementVisible === true;
+  $('schema-text').value = previous.draft ?? ER.serialize(model); textDirty = $('schema-text').value !== ER.serialize(model);
   draw(); persist(); boundsView(); notify(redo ? 'Operazione ripristinata.' : 'Operazione annullata.');
 }
 $('undo').addEventListener('click', () => travel(false)); $('redo').addEventListener('click', () => travel(true));
-$('auto-layout').addEventListener('click', () => { if (formCanClose()) { closeEditor(false); commit(ER.layout(ER.copy(shownModel())), true, stage === 'restructured'); notify('Schema bilanciato, compresi i lati degli attributi. Puoi annullare o correggere le posizioni.'); } });
+$('auto-layout').addEventListener('click', () => { if (formCanClose()) { closeEditor(false); commit(ER.layout(ER.copy(shownModel()), display), true, stage === 'restructured'); notify('Schema bilanciato, compresi i lati degli attributi. Puoi annullare o correggere le posizioni.'); } });
 $('fit').addEventListener('click', boundsView);
-$('display-menu').addEventListener('change', () => {
-  display = ER.displayOptions({ cardinalityStyle: $('cardinality-style').value, showRelationshipType: $('show-relationship-type').checked });
-  draw(); persist(); boundsView();
+$('display-menu').addEventListener('change', event => {
+  if (event.target.id === 'show-statement') { statementVisible = event.target.checked; draw(); persist(); return; }
+  const fontSizes = Object.fromEntries([...document.querySelectorAll('[data-font]')].map(input => [input.dataset.font, Number(input.value)]));
+  display = ER.displayOptions({ ...display, cardinalityStyle: $('cardinality-style').value, showRelationshipType: $('show-relationship-type').checked, fontSizes });
+  draw(); persist(); if (!event.target.matches('[data-font]')) boundsView();
+});
+$('display-menu').addEventListener('click', event => {
+  const button = event.target.closest('[data-font-step], #reset-fonts');
+  if (!button) return;
+  if (button.id === 'reset-fonts') {
+    if (stage === 'lab') display.fontSizes.statement = ER.displayOptions().fontSizes.statement;
+    else display.fontSizes = ER.displayOptions().fontSizes;
+  }
+  else display.fontSizes[button.dataset.fontTarget] += Number(button.dataset.fontStep);
+  display = ER.displayOptions(display); draw(); persist();
 });
 $('display-menu').addEventListener('keydown', event => { if (event.key === 'Escape') { $('display-menu').open = false; $('display-menu').querySelector('summary').focus(); } });
 document.addEventListener('click', event => { if (!event.target.closest('#display-menu')) $('display-menu').open = false; });
@@ -510,7 +730,7 @@ $('diagram').addEventListener('pointerdown', event => {
   if (node) { selected = node.id; draw(); }
   else { selected = ''; draw(); }
   const attribute = target?.dataset.attribute;
-  const originalAttribute = attribute != null ? ER.attributePosition(node, attribute) : null;
+  const originalAttribute = attribute != null ? ER.attributePosition(node, attribute, display.fontSizes) : null;
   drag = { pointer: event.pointerId, node: node?.id, attribute, derived: stage === 'restructured', start: p, client: { x: event.clientX, y: event.clientY }, original: ER.copy(active), view: { ...view }, origin: originalAttribute || (node ? { x: node.x, y: node.y } : null), moved: false };
   $('diagram').setPointerCapture(event.pointerId);
 });
@@ -563,7 +783,7 @@ $('diagram').addEventListener('keydown', event => {
   event.preventDefault(); const next = ER.copy(shownModel()), node = [...next.entities, ...next.relationships].find(n => n.id === target.dataset.node);
   const amount = event.shiftKey ? 25 : 5, dx = event.key === 'ArrowRight' ? amount : event.key === 'ArrowLeft' ? -amount : 0, dy = event.key === 'ArrowDown' ? amount : event.key === 'ArrowUp' ? -amount : 0;
   if (target.dataset.attribute != null) {
-    const i = target.dataset.attribute, p = ER.attributePosition(node, i);
+    const i = target.dataset.attribute, p = ER.attributePosition(node, i, display.fontSizes);
     node.attributePositions[i] = { x: p.x - node.x + dx, y: p.y - node.y + dy };
   } else { node.x += dx; node.y += dy; }
   try {
@@ -573,7 +793,7 @@ $('diagram').addEventListener('keydown', event => {
   } catch (error) { notify(error.message); }
 });
 document.addEventListener('keydown', event => {
-  if (event.target.closest('input,textarea,select') || $('help-dialog').open || $('export-dialog').open) return;
+  if (event.target.closest('input,textarea,select') || $('help-dialog').open || $('export-dialog').open || $('statement-dialog').open || $('exercises-dialog').open) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); travel(event.shiftKey); }
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); travel(true); }
 });
@@ -595,7 +815,7 @@ $('file-input').addEventListener('change', async event => {
   try {
     if (file.size > 10000000) throw Error('Il file supera il limite di 10 MB.');
     const raw = JSON.parse(await file.text()), next = ER.validate(raw.model || raw), importedDerived = readDerived(raw.derived);
-    if (replaceProject(next, importedDerived, raw.display)) notify('Progetto aperto. Schema iniziale e ristrutturazione sono conservati.');
+    if (replaceProject(next, importedDerived, raw.display, raw.statement, raw.statementVisible)) notify('Progetto aperto. Schema iniziale e ristrutturazione sono conservati.');
   } catch (error) { notify(`Impossibile aprire il progetto: ${error.message}`); }
 });
 const filename = () => model.title.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'schema-er';
@@ -644,7 +864,7 @@ $('export-form').addEventListener('submit', async event => {
   event.preventDefault(); $('export-error').hidden = true;
   const button = $('export-download'); button.disabled = true; button.textContent = 'Esportazione in corso…';
   const action = exportAction, includeData = $('export-data').checked, fromDatabase = $('export-source').value === 'database';
-  const project = { ...ER.copy(model), derived: derived ? ER.copy(derived) : null, display: ER.copy(display) };
+  const project = { ...ER.copy(model), derived: derived ? ER.copy(derived) : null, display: ER.copy(display), statement: ER.copy(statement), statementVisible };
   $('export-source').disabled = true; $('export-data').disabled = true;
   try {
     const snapshot = includeData || (action === 'sql' && fromDatabase) ? await lab.exportDatabase(includeData) : null;

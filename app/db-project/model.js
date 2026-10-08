@@ -141,7 +141,7 @@
     }
     return model;
   }
-  function parse(text) {
+  function parse(text, display = {}) {
     if (text.length > 1000000) throw Error('La descrizione è troppo grande (massimo 1 MB).');
     const model = { title: 'Nuovo schema', entities: [], relationships: [] };
     let current = null, attrLines = [];
@@ -197,7 +197,7 @@
         if (!r) throw Error('Associazione dell’identificatore esterno non definita.'); return { entity: owner, relationship: r.id };
       }) };
     });
-    return layout(validate(model));
+    return layout(validate(model), display);
   }
   function serialize(model) {
     const lines = [`TITOLO: ${model.title}`, ''];
@@ -213,7 +213,8 @@
     (model.constraints || []).forEach(c => lines.push(`VINCOLO: ${c}`));
     return lines.join('\n');
   }
-  function layout(model) {
+  function layout(model, display = {}) {
+    const fonts = displayOptions(display).fontSizes;
     const nodes = [...model.entities, ...model.relationships];
     // Start from the schema, not the previous drawing: repeating Riordina must be stable.
     nodes.forEach(n => { n.x = n.y = 0; n.side = 'top'; n.attributeSides = {}; n.attributePositions = {}; });
@@ -221,7 +222,7 @@
     const footprints = new Map();
     function measuredBounds(node) {
       const key = `${node.id}:${node.side}:${JSON.stringify(node.attributeSides)}`;
-      if (!footprints.has(key)) footprints.set(key, nodeBounds({ ...node, x: 0, y: 0 }));
+      if (!footprints.has(key)) footprints.set(key, nodeBounds({ ...node, x: 0, y: 0 }, fonts));
       const box = footprints.get(key);
       return { left: box.left + node.x, right: box.right + node.x, top: box.top + node.y, bottom: box.bottom + node.y };
     }
@@ -443,20 +444,21 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
     model.relationships.forEach(r => { [r.x, r.y] = relations[r.name]; });
     return model;
   }
-  function dimensions(node, relationship) {
-    return relationship ? { w: Math.max(94, textWidth(node.name, 20) / 2 + 25), h: 48 } : { w: Math.max(85, textWidth(node.name, 20) / 2 + 24), h: 32 };
+  const defaultFontSizes = { nodes: 20, attributes: 17, cardinalities: 17, badges: 14, notes: 15, statement: 14 };
+  function dimensions(node, relationship, fonts = defaultFontSizes) {
+    return relationship ? { w: Math.max(94, textWidth(node.name, fonts.nodes) / 2 + 25), h: Math.max(48, fonts.nodes * 2.4) } : { w: Math.max(85, textWidth(node.name, fonts.nodes) / 2 + 24), h: Math.max(32, fonts.nodes * 1.6) };
   }
   // Conservative font estimates also work in Node and for wide/Unicode names.
   const textWidth = (text, size = 17) => [...text].reduce((sum, c) => sum + (/[MW@%]|[^\u0000-\u024f]/u.test(c) ? 18 : /[A-Z]/.test(c) ? 13 : /[mw]/.test(c) ? 15 : 10), 0) * size / 17;
-  function anchor(node, toward, relationship, force) {
-    const { w, h } = dimensions(node, relationship);
+  function anchor(node, toward, relationship, force, fonts = defaultFontSizes) {
+    const { w, h } = dimensions(node, relationship, fonts);
     const dx = toward.x - node.x, dy = toward.y - node.y;
     if (force === 'top') return { x: node.x - w * .36, y: node.y - h };
     if (force === 'bottom') return { x: node.x + w * .36, y: node.y + h };
     const scale = relationship ? 1 / (Math.abs(dx) / w + Math.abs(dy) / h || 1) : Math.min(w / (Math.abs(dx) || .001), h / (Math.abs(dy) || .001));
     return { x: node.x + dx * scale, y: node.y + dy * scale };
   }
-  function attributePosition(node, index) {
+  function attributePosition(node, index, fonts = defaultFontSizes) {
     if (node.attributePositions?.[index]) return { x: node.x + node.attributePositions[index].x, y: node.y + node.attributePositions[index].y };
     if (Object.keys(node.attributeSides || {}).length) {
       const side = attributeSide(node, String(index)), entries = attributeEntries(node.attributes), mapping = {};
@@ -470,14 +472,16 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
       }
       const roots = sameSide.filter(e => !sameSide.some(p => p.path === e.parent));
       const virtual = { ...node, side, attributes: roots.map((e, i) => build(e, `${i}`)), attributeSides: {}, attributePositions: {} };
-      return attributePosition(virtual, mapping[String(index)]);
+      return attributePosition(virtual, mapping[String(index)], fonts);
     }
+    const scale = fonts.attributes / 17, original = dimensions(node, !!node.ends), size = dimensions(node, !!node.ends, fonts);
+    const lateral = 175 + Math.max(0, size.w - original.w), vertical = 115 + Math.max(0, size.h - original.h);
     if (node.attributes.some(a => a.children)) {
-      const positions = {}, width = a => Math.max(textWidth(a.name + (a.cardinality === '1,1' ? '' : ` (${a.cardinality})`)) + 36, (a.children || []).reduce((sum, child) => sum + width(child), 0));
+      const positions = {}, width = a => Math.max(textWidth(a.name + (a.cardinality === '1,1' ? '' : ` (${a.cardinality})`), fonts.attributes) + 36, (a.children || []).reduce((sum, child) => sum + width(child), 0));
       const entries = attributeEntries(node.attributes), maxDepth = Math.max(...entries.map(e => e.depth));
       const horizontal = node.side === 'left' || node.side === 'right', direction = node.side === 'left' || node.side === 'top' ? -1 : 1;
       function place(a, path, center, depth, row) {
-        positions[path] = horizontal ? { x: node.x + direction * (175 + depth * 220), y: node.y + center } : { x: node.x + center, y: node.y + direction * (115 + depth * 110 + row * (maxDepth + 2) * 110) };
+        positions[path] = horizontal ? { x: node.x + direction * (lateral + depth * 220 * scale), y: node.y + center } : { x: node.x + center, y: node.y + direction * (vertical + depth * 110 * scale + row * (maxDepth + 2) * 110 * scale) };
         let cursor = center - (a.children || []).reduce((sum, c) => sum + width(c), 0) / 2;
         (a.children || []).forEach((c, i) => { const w = width(c); place(c, `${path}.${i}`, cursor + w / 2, depth + 1, row); cursor += w; });
       }
@@ -490,38 +494,39 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
     }
     index = +index;
     const count = node.attributes.length;
-    if (node.side === 'left' || node.side === 'right') return { x: node.x + (node.side === 'left' ? -175 : 175), y: node.y + (index - (count - 1) / 2) * 32 };
+    if (node.side === 'left' || node.side === 'right') return { x: node.x + (node.side === 'left' ? -lateral : lateral), y: node.y + (index - (count - 1) / 2) * 32 * scale };
     const column = index % 7, row = Math.floor(index / 7);
-    const widths = node.attributes.slice(row * 7, row * 7 + 7).map(a => textWidth(a.name + (a.cardinality !== '1,1' ? ` (${a.cardinality})` : '')) + 26);
-    return { x: node.x - widths.reduce((a, b) => a + b, 0) / 2 + widths.slice(0, column).reduce((a, b) => a + b, 0) + widths[column] / 2, y: node.y + (node.side === 'bottom' ? 1 : -1) * (115 + row * 80) };
+    const widths = node.attributes.slice(row * 7, row * 7 + 7).map(a => textWidth(a.name + (a.cardinality !== '1,1' ? ` (${a.cardinality})` : ''), fonts.attributes) + 26);
+    return { x: node.x - widths.reduce((a, b) => a + b, 0) / 2 + widths.slice(0, column).reduce((a, b) => a + b, 0) + widths[column] / 2, y: node.y + (node.side === 'bottom' ? 1 : -1) * (vertical + row * 80 * scale) };
   }
   function attributeSide(node, path) {
     let current = String(path);
     while (current) { if (node.attributeSides?.[current]) return node.attributeSides[current]; current = current.includes('.') ? current.slice(0, current.lastIndexOf('.')) : ''; }
     return node.side;
   }
-  function nodeBoxes(node) {
-    const { w, h } = dimensions(node, !!node.ends);
+  function nodeBoxes(node, fonts = defaultFontSizes) {
+    const { w, h } = dimensions(node, !!node.ends, fonts);
     const boxes = [{ left: node.x - w, right: node.x + w, top: node.y - h, bottom: node.y + h }];
     attributeEntries(node.attributes).forEach(({ attr, path }) => {
-      const p = attributePosition(node, path), width = textWidth(attr.name + (attr.cardinality === '1,1' ? '' : ` (${attr.cardinality})`));
+      const p = attributePosition(node, path, fonts), width = textWidth(attr.name + (attr.cardinality === '1,1' ? '' : ` (${attr.cardinality})`), fonts.attributes);
       const side = attributeSide(node, path);
       const left = side === 'left' ? p.x - 12 - width : side === 'right' ? p.x + 12 : p.x - width / 2;
-      const baseline = p.y + (side === 'top' ? -14 : side === 'bottom' ? 21 : 5);
-      boxes.push({ left: Math.min(left, p.x - 5), right: Math.max(left + width, p.x + 5), top: Math.min(baseline - 18, p.y - 5), bottom: Math.max(baseline + 12, p.y + 5) });
+      const baseline = p.y + (side === 'top' ? -14 : side === 'bottom' ? fonts.attributes + 4 : fonts.attributes * 5 / 17);
+      boxes.push({ left: Math.min(left, p.x - 5), right: Math.max(left + width, p.x + 5), top: Math.min(baseline - fonts.attributes - 1, p.y - 5), bottom: Math.max(baseline + fonts.attributes * 12 / 17, p.y + 5) });
     });
     if (node.externalKey) {
-      const label = `ID esterno: ${node.externalKey.attributes.join(' + ')}${node.externalKey.attributes.length ? ' + ' : ''}proprietario`, width = textWidth(label, 15);
-      boxes.push({ left: node.x - width / 2, right: node.x + width / 2, top: node.y + h + 12, bottom: node.y + h + 40 });
+      const label = `ID esterno: ${node.externalKey.attributes.join(' + ')}${node.externalKey.attributes.length ? ' + ' : ''}proprietario`, width = textWidth(label, fonts.notes);
+      const baseline = node.y + h + Math.max(30, fonts.notes + 12);
+      boxes.push({ left: node.x - width / 2, right: node.x + width / 2, top: baseline - fonts.notes * 1.2, bottom: baseline + fonts.notes * 2 / 3 });
     }
     return boxes;
   }
-  function nodeBounds(node) {
-    const boxes = nodeBoxes(node);
+  function nodeBounds(node, fonts = defaultFontSizes) {
+    const boxes = nodeBoxes(node, fonts?.nodes ? fonts : defaultFontSizes);
     return { left: Math.min(...boxes.map(b => b.left)), right: Math.max(...boxes.map(b => b.right)), top: Math.min(...boxes.map(b => b.top)), bottom: Math.max(...boxes.map(b => b.bottom)) };
   }
-  function portOffset(entity, side, slot, count) {
-    const { w, h } = dimensions(entity, false);
+  function portOffset(entity, side, slot, count, fonts = defaultFontSizes) {
+    const { w, h } = dimensions(entity, false, fonts);
     return (slot - (count - 1) / 2) * Math.min(28, (side === 'top' || side === 'bottom' ? w * 1.5 : h * 1.5) / Math.max(1, count - 1));
   }
   function connectionSide(entity, relationship, recursive) {
@@ -537,16 +542,19 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
     return side;
   }
   function displayOptions(raw) {
-    return { cardinalityStyle: ['university', 'uml', 'both'].includes(raw?.cardinalityStyle) ? raw.cardinalityStyle : 'university', showRelationshipType: raw?.showRelationshipType === true };
+    const fontSizes = Object.fromEntries(Object.entries(defaultFontSizes).map(([key, fallback]) => [key, Number.isFinite(raw?.fontSizes?.[key]) ? Math.max(8, Math.min(40, Math.round(raw.fontSizes[key]))) : fallback]));
+    if (raw?.fontSizes?.badges === undefined && Number.isFinite(raw?.fontSizes?.cardinalities)) fontSizes.badges = Math.max(8, fontSizes.cardinalities - 3);
+    return { cardinalityStyle: ['university', 'uml', 'both'].includes(raw?.cardinalityStyle) ? raw.cardinalityStyle : 'university', showRelationshipType: raw?.showRelationshipType === true, statementHeight: Number.isFinite(raw?.statementHeight) ? Math.max(48, Math.min(200, Math.round(raw.statementHeight))) : 200, fontSizes };
   }
   function render(model, selected = '', display = {}) {
     const options = displayOptions(display);
+    const fonts = options.fontSizes;
     const nodes = [...model.entities, ...model.relationships];
     let edges = '', shapes = '', bounds = [];
-    const occupiedLabels = nodes.flatMap(nodeBoxes);
+    const occupiedLabels = nodes.flatMap(node => nodeBoxes(node, fonts));
     (model.hierarchies || []).forEach(h => {
       const parent = model.entities.find(e => e.id === h.parent), children = h.children.map(id => model.entities.find(e => e.id === id));
-      const side = connectionSide(parent, { x: parent.x, y: parent.y + 1000 }, false), size = dimensions(parent, false), box = nodeBounds(parent);
+      const side = connectionSide(parent, { x: parent.x, y: parent.y + 1000 }, false), size = dimensions(parent, false, fonts), box = nodeBounds(parent, fonts);
       const dx = side === 'right' ? 1 : side === 'left' ? -1 : 0;
       const p = { x: parent.x + dx * size.w, y: dx ? parent.y : parent.y + size.h };
       const junction = { x: dx > 0 ? box.right + 60 : dx < 0 ? box.left - 60 : p.x, y: Math.max(p.y + 70, box.bottom + 70) };
@@ -555,23 +563,24 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
       const label = `${h.total ? 'totale' : 'parziale'} · ${h.disjoint ? 'esclusiva' : 'sovrapposta'}`, lx = junction.x + 18, ly = junction.y - 12;
       edges += `<g class="hierarchy" data-hierarchy="${h.id}" tabindex="0" role="button" aria-label="Modifica gerarchia di ${escape(parent.name)}"><path class="connection" d="${stem}"/><polygon class="isa-arrow" points="${arrow}"/><text class="role" x="${lx}" y="${ly}">${label}</text>`;
       children.forEach(child => {
-        const box = nodeBounds(child), right = parent.x > child.x, x = right ? box.right + 45 : box.left - 45, w = dimensions(child, false).w;
+        const box = nodeBounds(child, fonts), right = parent.x > child.x, x = right ? box.right + 45 : box.left - 45, w = dimensions(child, false, fonts).w;
         const c = { x: child.x + (right ? w : -w), y: child.y };
         edges += `<polyline class="connection" points="${junction.x},${junction.y} ${x},${junction.y} ${x},${c.y} ${c.x},${c.y}"/>`;
         bounds.push(junction, c, { x, y: junction.y }, { x, y: c.y });
       });
-      const labelBox = { left: lx, right: lx + textWidth(label, 15), top: ly - 20, bottom: ly + 8 };
+      const labelBox = { left: lx, right: lx + textWidth(label, fonts.notes), top: ly - fonts.notes * 4 / 3, bottom: ly + fonts.notes * 8 / 15 };
       occupiedLabels.push(labelBox);
-      edges += '</g>'; bounds.push(p, { x: junction.x, y: p.y }, { x: labelBox.right, y: labelBox.bottom });
+      edges += '</g>'; bounds.push(p, { x: junction.x, y: p.y }, { x: labelBox.left, y: labelBox.top }, { x: labelBox.right, y: labelBox.bottom });
     });
     if (options.showRelationshipType) model.relationships.forEach(r => {
       const many = r.ends.filter(end => end.cardinality.endsWith('N')).length;
-      const label = ['1:1', '1:N', 'N:M'][many], top = nodeBounds(r).top;
-      const box = { left: r.x - 28, right: r.x + 28, top: top - 38, bottom: top - 12 };
-      while (occupiedLabels.some(b => box.right + 6 > b.left && box.left < b.right + 6 && box.bottom + 6 > b.top && box.top < b.bottom + 6)) { box.top -= 36; box.bottom -= 36; }
+      const label = ['1:1', '1:N', 'N:M'][many], top = nodeBounds(r, fonts).top;
+      const badgeFont = fonts.badges, width = Math.max(56, textWidth(label, badgeFont) + 20), height = badgeFont + 12;
+      const box = { left: r.x - width / 2, right: r.x + width / 2, top: top - height - 12, bottom: top - 12 };
+      while (occupiedLabels.some(b => box.right + 6 > b.left && box.left < b.right + 6 && box.bottom + 6 > b.top && box.top < b.bottom + 6)) { box.top -= height + 10; box.bottom -= height + 10; }
       occupiedLabels.push(box);
       bounds.push({ x: box.left, y: box.top }, { x: box.right, y: box.bottom });
-      shapes += `<g class="relationship-type" aria-label="Tipo di associazione ${escape(r.name)}: ${label}"><rect x="${box.left}" y="${box.top}" width="56" height="26" rx="4"/><text x="${r.x}" y="${box.top + 18}" text-anchor="middle">${label}</text></g>`;
+      shapes += `<g class="relationship-type" aria-label="Tipo di associazione ${escape(r.name)}: ${label}"><rect x="${box.left}" y="${box.top}" width="${width}" height="${height}" rx="4"/><text x="${r.x}" y="${box.top + badgeFont + 4}" text-anchor="middle">${label}</text></g>`;
     });
     // ponytail: separate lanes per entity side; add obstacle-aware routing if dense schemas need automatic avoidance.
     const ports = new Map();
@@ -579,7 +588,7 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
       const e = model.entities.find(n => n.id === end.entity), recursive = r.ends[0].entity === r.ends[1].entity;
       const side = connectionSide(e, r, recursive);
       const key = `${e.id}:${side}`; if (!ports.has(key)) ports.set(key, []);
-      const rd = dimensions(r, true);
+      const rd = dimensions(r, true, fonts);
       const target = side === 'left' ? r.x + rd.w : side === 'right' ? r.x - rd.w : side === 'top' ? r.y + rd.h : r.y - rd.h;
       ports.get(key).push({ id: r.id, index, entity: e, side, recursive, order: side === 'left' || side === 'right' ? r.y : r.x, target });
     }));
@@ -587,14 +596,14 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
       group.sort((a, b) => a.order - b.order || a.index - b.index);
       const lanes = [];
       group.forEach((p, slot) => {
-        const start = (p.side === 'left' || p.side === 'right' ? p.entity.y : p.entity.x) + portOffset(p.entity, p.side, slot, group.length);
+        const start = (p.side === 'left' || p.side === 'right' ? p.entity.y : p.entity.x) + portOffset(p.entity, p.side, slot, group.length, fonts);
         const interval = [Math.min(start, p.order), Math.max(start, p.order)];
         let lane = p.recursive ? -1 : lanes.findIndex(ranges => ranges.every(r => interval[1] + 12 < r[0] || interval[0] > r[1] + 12));
         if (lane < 0) { lane = lanes.length; lanes.push([]); }
         lanes[lane].push(interval); p.lane = lane;
       });
       group.forEach(p => { p.lane -= (lanes.length - 1) / 2; });
-      const e = group[0].entity, side = group[0].side, horizontal = side === 'left' || side === 'right', d = dimensions(e, false), box = nodeBounds(e);
+      const e = group[0].entity, side = group[0].side, horizontal = side === 'left' || side === 'right', d = dimensions(e, false, fonts), box = nodeBounds(e, fonts);
       const direction = side === 'left' || side === 'top' ? -1 : 1, axis = horizontal ? e.x + direction * d.w : e.y + direction * d.h;
       const closest = group.reduce((best, p) => Math.abs(p.target - axis) < Math.abs(best - axis) ? p.target : best, group[0].target);
       const spacing = Math.min(36, Math.max(12, Math.abs(closest - axis) / (group.length + 1))), reserve = (lanes.length - 1) * spacing / 2 + 60;
@@ -610,8 +619,8 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
       const recursive = r.ends[0].entity === r.ends[1].entity;
       const side = connectionSide(entity, r, recursive), horizontal = side === 'left' || side === 'right';
       const group = ports.get(`${entity.id}:${side}`), slot = group.findIndex(p => p.id === r.id && p.index === index);
-      const { w, h } = dimensions(entity, false), rd = dimensions(r, true);
-      const offset = portOffset(entity, side, slot, group.length);
+      const { w, h } = dimensions(entity, false, fonts), rd = dimensions(r, true, fonts);
+      const offset = portOffset(entity, side, slot, group.length, fonts);
       const a = side === 'left' || side === 'right' ? { x: entity.x + (side === 'right' ? w : -w), y: entity.y + offset } : { x: entity.x + offset, y: entity.y + (side === 'bottom' ? h : -h) };
       const b = recursive ? { x: r.x, y: r.y + (index === 0 ? -rd.h : rd.h) } : horizontal ? { x: r.x + (r.x >= entity.x ? -rd.w : rd.w), y: r.y } : { x: r.x, y: r.y + (r.y >= entity.y ? -rd.h : rd.h) };
       let points;
@@ -636,13 +645,15 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
         }
       }
       const labelsToDraw = [];
-      if (options.cardinalityStyle !== 'uml') labelsToDraw.push({ text: `(${end.cardinality})`, className: 'cardinality', size: 17 });
-      if (options.cardinalityStyle !== 'university') labelsToDraw.push({ text: `${options.cardinalityStyle === 'both' ? 'UML ' : ''}${r.ends[1 - index].cardinality.slice(-1)}`, className: 'cardinality cardinality-uml', size: 17 });
-      if (end.role) labelsToDraw.push({ text: end.role, className: 'role', size: 15 });
+      if (options.cardinalityStyle !== 'uml') labelsToDraw.push({ text: `(${end.cardinality})`, className: 'cardinality', size: fonts.cardinalities });
+      if (options.cardinalityStyle !== 'university') labelsToDraw.push({ text: `${options.cardinalityStyle === 'both' ? 'max ' : ''}${r.ends[1 - index].cardinality.slice(-1)}`, className: 'cardinality cardinality-uml', size: fonts.cardinalities });
+      if (end.role) labelsToDraw.push({ text: end.role, className: 'role', size: fonts.notes });
+      const labelGap = Math.max(32, ...labelsToDraw.map(label => label.size + 15));
       const labelWidths = labelsToDraw.map(label => textWidth(label.text, label.size));
       const labelBoxes = p => labelWidths.map((width, i) => {
-        const left = p.x - (p.align === 'middle' ? width / 2 : p.align === 'end' ? width : 0), y = p.y + i * 32;
-        return { left: left - 4, right: left + width + 4, top: y - 22, bottom: y + 8 };
+        const left = p.x - (p.align === 'middle' ? width / 2 : p.align === 'end' ? width : 0), y = p.y + i * labelGap;
+        const size = labelsToDraw[i].size;
+        return { left: left - 4, right: left + width + 4, top: y - Math.max(22, size + 5), bottom: y + Math.max(8, size * .4) };
       });
       let position;
       // ponytail: local label placement near the route; obstacle-aware routing is needed for fully packed manual diagrams.
@@ -654,25 +665,25 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
       const labels = labelBoxes(position); occupiedLabels.push(...labels);
       labels.forEach(b => bounds.push({ x: b.left, y: b.top }, { x: b.right, y: b.bottom }));
       edges += `<polyline class="connection" points="${points.map(p => `${p.x},${p.y}`).join(' ')}"/>`;
-      labelsToDraw.forEach((label, i) => { edges += `<text class="${label.className}" x="${lx}" y="${ly + i * 32}" text-anchor="${align}">${escape(label.text)}</text>`; });
+      labelsToDraw.forEach((label, i) => { edges += `<text class="${label.className}" x="${lx}" y="${ly + i * labelGap}" text-anchor="${align}">${escape(label.text)}</text>`; });
     }));
     nodes.forEach(node => {
-      const relationship = !!node.ends, { w, h } = dimensions(node, relationship);
-      const box = nodeBounds(node);
+      const relationship = !!node.ends, { w, h } = dimensions(node, relationship, fonts);
+      const box = nodeBounds(node, fonts);
       bounds.push({ x: box.left, y: box.top }, { x: box.right, y: box.bottom });
       let attrs = '';
       const entries = attributeEntries(node.attributes);
       entries.forEach(({ attr, path, parent }) => {
-        const p = attributePosition(node, path), a = parent ? attributePosition(node, parent) : anchor(node, p, relationship);
+        const p = attributePosition(node, path, fonts), a = parent ? attributePosition(node, parent, fonts) : anchor(node, p, relationship, undefined, fonts);
         const side = attributeSide(node, path), align = side === 'left' ? 'end' : side === 'right' ? 'start' : 'middle';
-        const tx = p.x + (align === 'end' ? -12 : align === 'start' ? 12 : 0), ty = p.y + (align === 'middle' ? side === 'bottom' ? 21 : -14 : 5);
+        const tx = p.x + (align === 'end' ? -12 : align === 'start' ? 12 : 0), ty = p.y + (align === 'middle' ? side === 'bottom' ? fonts.attributes + 4 : -14 : fonts.attributes * 5 / 17);
         const label = `${attr.name}${attr.cardinality === '1,1' ? '' : ` (${attr.cardinality})`}`;
         const inheritedKey = entries.some(e => e.attr.key && (path === e.path || path.startsWith(e.path + '.')));
         attrs += `<line class="attribute-line" x1="${a.x}" y1="${a.y}" x2="${p.x}" y2="${p.y}"/><g class="attribute" data-node="${node.id}" data-attribute="${path}" tabindex="0" role="button" aria-label="Sposta attributo ${escape(attr.name)}"><circle class="attribute-hit" cx="${p.x}" cy="${p.y}" r="14"/><circle class="attribute-dot${inheritedKey || node.externalKey?.attributes.includes(attr.name) ? ' key' : ''}" cx="${p.x}" cy="${p.y}" r="5"/><text class="attribute-label" x="${tx}" y="${ty}" text-anchor="${align}">${escape(label)}</text></g>`;
       });
-      if (node.externalKey) shapes += `<text class="role" x="${node.x}" y="${node.y + h + 30}" text-anchor="middle">${escape(`ID esterno: ${node.externalKey.attributes.join(' + ')}${node.externalKey.attributes.length ? ' + ' : ''}proprietario`)}</text>`;
+      if (node.externalKey) shapes += `<text class="role" x="${node.x}" y="${node.y + h + Math.max(30, fonts.notes + 12)}" text-anchor="middle">${escape(`ID esterno: ${node.externalKey.attributes.join(' + ')}${node.externalKey.attributes.length ? ' + ' : ''}proprietario`)}</text>`;
       const shape = relationship ? `<polygon points="${node.x-w},${node.y} ${node.x},${node.y-h} ${node.x+w},${node.y} ${node.x},${node.y+h}"/>` : `<rect x="${node.x-w}" y="${node.y-h}" width="${w*2}" height="${h*2}" rx="2"/>`;
-      shapes += attrs + `<g class="diagram-node ${relationship ? 'relationship' : 'entity'}${selected === node.id ? ' selected' : ''}" data-node="${node.id}" tabindex="0" role="button" aria-label="Modifica ${escape(node.name)}">${shape}<text x="${node.x}" y="${node.y + 6}" text-anchor="middle">${escape(node.name)}</text></g>`;
+      shapes += attrs + `<g class="diagram-node ${relationship ? 'relationship' : 'entity'}${selected === node.id ? ' selected' : ''}" data-node="${node.id}" tabindex="0" role="button" aria-label="Modifica ${escape(node.name)}">${shape}<text x="${node.x}" y="${node.y + fonts.nodes * .3}" text-anchor="middle">${escape(node.name)}</text></g>`;
     });
     if (!bounds.length) bounds = [{ x: 0, y: 0 }, { x: 1000, y: 700 }];
     const minX = Math.min(...bounds.map(p => p.x)) - 65, minY = Math.min(...bounds.map(p => p.y)) - 65;
@@ -682,9 +693,13 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
   const svgStyle = `.isa-arrow{fill:#fff;stroke:#53666b;stroke-width:1.6}.connection,.attribute-line{fill:none;stroke:#53666b;stroke-width:1.6;stroke-linejoin:round}.entity rect{fill:#fff;stroke:#23594f;stroke-width:2}.relationship polygon{fill:#fff;stroke:#53666b;stroke-width:1.8}.diagram-node text{font:600 20px "Avenir Next",Arial,sans-serif;fill:#203532}.attribute-dot{fill:#fff;stroke:#364d48;stroke-width:1.6}.attribute-dot.key{fill:#203532}.attribute-hit{fill:transparent}.attribute-label{font:17px "Avenir Next",Arial,sans-serif;fill:#334642}.cardinality{font:600 17px "Avenir Next",Arial,sans-serif;fill:#203532;paint-order:stroke;stroke:#fff;stroke-width:6px;stroke-linejoin:round}.role{font:italic 15px "Avenir Next",Arial,sans-serif;fill:#4a605a;paint-order:stroke;stroke:#fff;stroke-width:5px}.selected rect,.selected polygon{stroke:#067e63;stroke-width:3}.diagram-node,.attribute{cursor:grab}.diagram-node:focus rect,.diagram-node:focus polygon{stroke:#067e63;stroke-width:3}.cardinality-uml{fill:#245d85}.relationship-type rect{fill:#f8faf8;stroke:#a6b7ad;stroke-width:1}.relationship-type text{font:600 14px "Avenir Next",Arial,sans-serif;fill:#334642}`;
   function svg(model, display = {}) {
     const { markup, bounds: b } = render(model, '', display);
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(b.w)}" height="${Math.ceil(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}" role="img" aria-label="${escape(model.title)}"><title>${escape(model.title)}</title><style>${svgStyle}</style><rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="white"/>${markup}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(b.w)}" height="${Math.ceil(b.h)}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}" role="img" aria-label="${escape(model.title)}"><title>${escape(model.title)}</title><style>${diagramStyle(display)}</style><rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="white"/>${markup}</svg>`;
   }
-  const api = { cards, uid, copy, escape, attributes, attributeText, attributeEntries, validate, parse, serialize, layout, example, render, svg, svgStyle, displayOptions, attributePosition, attributeSide, nodeBounds };
+  function diagramStyle(display = {}) {
+    const fonts = displayOptions(display).fontSizes;
+    return svgStyle + `.diagram-node text{font-size:${fonts.nodes}px}.attribute-label{font-size:${fonts.attributes}px}.cardinality{font-size:${fonts.cardinalities}px}.role{font-size:${fonts.notes}px}.relationship-type text{font-size:${fonts.badges}px}`;
+  }
+  const api = { cards, uid, copy, escape, attributes, attributeText, attributeEntries, validate, parse, serialize, layout, example, render, svg, svgStyle, diagramStyle, displayOptions, attributePosition, attributeSide, nodeBounds };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ER = api;
 })(globalThis);
