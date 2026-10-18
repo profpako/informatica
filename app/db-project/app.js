@@ -321,7 +321,11 @@ function draw() {
   $('schema-stage').querySelector('[value="restructured"]').disabled = !derived;
   $('schema-stage').querySelector('[value="relational"]').disabled = !derived?.relational;
   $('schema-stage').querySelector('[value="physical"]').disabled = !derived?.physical;
-  document.querySelectorAll('[data-export="svg"],[data-export="png"]').forEach(b => { b.disabled = !diagramStage(); });
+  document.querySelectorAll('[data-export="svg"],[data-export="png"]').forEach(b => {
+    b.disabled = !diagramStage() && stage !== 'relational';
+    const schema = stage === 'relational' ? 'Schema relazionale' : 'Schema ER', format = b.dataset.export;
+    b.innerHTML = `${schema} (${format === 'png' ? 'immagine' : 'vettoriale'}) <span>${format.toUpperCase()}</span>`;
+  });
   document.querySelector('[data-export="relational"]').disabled = !derived?.relational;
   document.querySelector('[data-export="sql"]').disabled = !derived?.physical && !lab.connectionInfo();
   const stale = derived && derived.signature !== ER.serialize(model);
@@ -370,6 +374,14 @@ function tab(mode, check = true) {
   });
   return true;
 }
+function setSidebarExpanded(expanded) {
+  $('sidebar').hidden = !expanded;
+  document.querySelector('.workspace').classList.toggle('sidebar-collapsed', !expanded);
+  $('sidebar-toggle').setAttribute('aria-expanded', String(expanded));
+  const label = expanded ? 'Riduci menu laterale' : 'Mostra menu laterale';
+  $('sidebar-toggle').setAttribute('aria-label', label); $('sidebar-toggle').title = label;
+}
+$('sidebar-toggle').addEventListener('click', () => setSidebarExpanded($('sidebar').hidden));
 function showEditor(kind, id = null, fromDerived = false) {
   if (kind === 'hierarchy') { showHierarchy(id); return; }
   if (!formCanClose()) return;
@@ -398,6 +410,7 @@ function showEditor(kind, id = null, fromDerived = false) {
     $(`card-${letter}`).value = node?.ends?.[index]?.cardinality || (index === 0 ? '0,N' : '1,1');
     $(`role-${letter}`).value = node?.ends?.[index]?.role || '';
   });
+  setSidebarExpanded(true);
   $('structure-panel').scrollTop = 0; draw(); $('node-name').focus({ preventScroll: true });
   if (window.innerWidth <= 760) $('node-form').scrollIntoView({ behavior: 'auto', block: 'start' });
 }
@@ -497,6 +510,7 @@ function hierarchyChildren(selected = []) {
 }
 function showHierarchy(id = null) {
   if (!formCanClose()) return;
+  setSidebarExpanded(true);
   stage = 'initial'; tab('structure', false);
   const h = (model.hierarchies || []).find(h => h.id === id);
   editing = { kind: 'hierarchy', id }; formDirty = false;
@@ -929,11 +943,14 @@ function download(content, type, extension) {
   link.href = url; link.download = `${filename()}.${extension}`; document.body.appendChild(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
+function exportSVG() {
+  return stage === 'relational' ? ER.relationalSVG(derived.relational) : ER.svg(shownModel(), display);
+}
 async function exportPNG() {
-  const svg = ER.svg(shownModel(), display), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  const svg = exportSVG(), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {
     const image = new Image(); image.src = url; await image.decode();
-    const b = ER.render(shownModel(), '', display).bounds, scale = Math.min(2, 8192 / Math.max(b.w, b.h), Math.sqrt(16000000 / (b.w * b.h)));
+    const b = { w: image.naturalWidth, h: image.naturalHeight }, scale = Math.min(2, 8192 / Math.max(b.w, b.h), Math.sqrt(16000000 / (b.w * b.h)));
     const canvas = document.createElement('canvas'); canvas.width = Math.ceil(b.w * scale); canvas.height = Math.ceil(b.h * scale);
     const ctx = canvas.getContext('2d'); if (!ctx) throw Error('Il browser non supporta l’esportazione PNG.');
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
@@ -988,7 +1005,7 @@ $('export-menu').addEventListener('click', async event => {
   if (formDirty || textDirty) notify('Esporto l’ultimo schema applicato. Applica o genera le modifiche in bozza per includerle.');
   try {
     if (action === 'json' || action === 'sql') openDataExport(action);
-    else if (action === 'svg') download(ER.svg(shownModel(), display), 'image/svg+xml', 'svg');
+    else if (action === 'svg') download(exportSVG(), 'image/svg+xml', 'svg');
     else if (action === 'relational') download(ER.relationalText(derived.relational), 'text/plain;charset=utf-8', 'txt');
     else if (action === 'png') {
       const summary = $('export-menu').querySelector('summary'); summary.style.pointerEvents = 'none'; summary.setAttribute('aria-busy', 'true');

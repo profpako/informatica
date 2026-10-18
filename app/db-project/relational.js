@@ -131,6 +131,39 @@
     const others = t.columns.filter(c => !t.primaryKey.includes(c.name)).map(column);
     return `<p class="compact-relation"><strong>${ER.escape(t.name)}</strong>(${[keyGroup, ...others].join(', ')})</p>`;
   }
-  ER.relational = relational; ER.relationalText = relationalText; ER.relationalNotation = relationalNotation;
-  if (typeof module !== 'undefined' && module.exports) module.exports = { relational, relationalText, relationalNotation };
+  function relationalSVG(result) {
+    const rows = [], advance = 8.4;
+    const text = value => {
+      for (const line of value.match(/.{1,110}(?:\s|$)|\S+/gu) || ['']) rows.push([{ text: line.trimEnd() }]);
+    };
+    text(`Schema relazionale: ${result.title}`);
+    text('PK: una sottolineatura · FK: doppia sottolineatura · * campo opzionale');
+    rows.push([]);
+    result.tables.forEach(t => {
+      const isFK = name => t.foreignKeys.some(f => f.columns.includes(name));
+      const keys = t.primaryKey.map(name => t.columns.find(c => c.name === name));
+      const columns = [{ text: keys.map(c => c.name).join(', '), pk: true, fk: keys.length === 1 && isFK(keys[0].name) },
+        ...t.columns.filter(c => !t.primaryKey.includes(c.name)).map(c => ({ text: c.name + (c.nullable ? '*' : ''), fk: isFK(c.name) }))];
+      rows.push([{ text: t.name, bold: true }, { text: '(' }, ...columns.flatMap((c, i) => i ? [{ text: ', ' }, c] : [c]), { text: ')' }]);
+      t.foreignKeys.forEach(f => text(`FK: ${t.name}(${f.columns.join(', ')}) → ${result.tables.find(t => t.id === f.target).name}(${f.references.join(', ')})`));
+      t.unique.forEach(columns => text(`UNIQUE: ${t.name}(${columns.join(', ')})`));
+      rows.push([]);
+    });
+    text('Vincoli residui:');
+    (result.constraints.length ? result.constraints : ['Nessun vincolo residuo aggiuntivo.']).forEach(text);
+    const width = Math.ceil(Math.max(60, ...rows.map(row => row.reduce((n, token) => n + [...token.text].length, 0))) * advance + 48), height = rows.length * 30 + 48;
+    const markup = rows.map((row, i) => {
+      let x = 24; const y = 42 + i * 30;
+      return row.map(token => {
+        const length = [...token.text].length * advance;
+        const underline = token.fk ? '#245d85' : '#243c36';
+        const output = `<text x="${x}" y="${y}" textLength="${length}" lengthAdjust="spacingAndGlyphs"${token.bold ? ' font-weight="bold"' : ''}>${ER.escape(token.text)}</text>`
+          + (token.pk || token.fk ? `<path class="${token.pk ? 'relational-pk' : 'relational-fk'}" d="M${x} ${y + 4}h${length}${token.fk ? `M${x} ${y + 7}h${length}` : ''}" fill="none" stroke="${underline}" stroke-width="1.4"/>` : '');
+        x += length; return output;
+      }).join('');
+    }).join('');
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="Schema relazionale: ${ER.escape(result.title)}"><title>Schema relazionale: ${ER.escape(result.title)}</title><rect width="100%" height="100%" fill="white"/><g font-family="monospace" font-size="14" fill="#243c36" xml:space="preserve">${markup}</g></svg>`;
+  }
+  ER.relational = relational; ER.relationalText = relationalText; ER.relationalNotation = relationalNotation; ER.relationalSVG = relationalSVG;
+  if (typeof module !== 'undefined' && module.exports) module.exports = { relational, relationalText, relationalNotation, relationalSVG };
 })(globalThis);

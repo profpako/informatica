@@ -4,6 +4,22 @@ const assert = require('node:assert/strict');
 const ER = require('../model.js');
 require('../restructure.js'); require('../relational.js');
 
+test('Relational SVG preserves composite keys, FK references, optional fields and escaping', () => {
+  const result = ER.relational(ER.parse('ENTITA: proprietario\n- prefisso [ID]\n- numero [ID]\nENTITA: auto\n- id [ID]\n- descrizione [0,1]\nASSOCIAZIONE: possiede: proprietario [1,N] -> auto [0,1]\nASSOCIAZIONE: usa: proprietario [0,N] -> auto [0,N]'));
+  result.title = '<Schema & prova>';
+  result.tables[0].name = 'Titolari & soci';
+  const before = JSON.stringify(result), svg = ER.relationalSVG(result);
+  assert.match(svg, /<title>Schema relazionale: &lt;Schema &amp; prova&gt;<\/title>/);
+  assert.match(svg, /Titolari &amp; soci/);
+  assert.match(svg, /descrizione\*/);
+  assert.match(svg, /FK: auto\(id_proprietario_prefisso, id_proprietario_numero\) → Titolari &amp; soci\(prefisso, numero\)/);
+  assert.equal((svg.match(/class="relational-pk"/g) || []).length, result.tables.length, 'One continuous underline per PK group');
+  assert.match(svg, /class="relational-fk" d="M[\d.]+ [\d.]+h[\d.]+M[\d.]+ [\d.]+h[\d.]+"/, 'FK has two underline strokes');
+  assert.match(svg, /Vincoli residui:/);
+  assert.doesNotMatch(svg, /foreignObject|<script/);
+  assert.equal(JSON.stringify(result), before, 'Export leaves the project intact');
+});
+
 test('schema relazionale: PK, FK composte, 1:N, N:M, 1:1, ricorsione e minimi residui', () => {
   const source = ER.parse(`ENTITA: Utente\n- prefisso [PK]\n- numero [PK]\n- nome\n- telefoni [1,N]\nENTITA: Post\n- id [PK]\n- testo\nASSOCIAZIONE: pubblica: Utente [0,N] -> Post [1,1]\nASSOCIAZIONE: segue: Utente (follower) [0,N] -> Utente (seguito) [0,N]`);
   const result = ER.relational(ER.restructure(source).model);
