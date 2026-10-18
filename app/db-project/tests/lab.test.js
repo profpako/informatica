@@ -156,10 +156,43 @@ test('Query visualization connects compared columns, highlights phases and escap
   assert.match(table, /&lt;script&gt;/); assert.match(table, /lab-null/); assert.match(table, /altre righe/);
   const intermediate = { columns: ['d.id', 'd.nome', 'm.id_ditta', 'd.fax'], rows: [[1, 'Acme', 1, null]] };
   const dimmed = dataTable(intermediate, { columnRoles: context.TramaLab.workingRoles(result), dimUnused: true });
-  assert.equal((dimmed.match(/class="lab-column-unused"/g) || []).length, 2, 'Only the unused fax header and cell are dimmed; keys and SELECT/JOIN remain visible');
+  assert.equal((dimmed.match(/class="lab-column-unused"/g) || []).length, 2, 'Only the unused fax header and cell are dimmed; SELECT/JOIN columns remain visible');
   assert.match(dimmed, /<th scope="col" class="lab-column-unused">d.fax<\/th>/);
   assert.match(dimmed, /<td class="lab-column-unused"><span class="lab-null">NULL/);
   assert.doesNotMatch(dataTable(intermediate), /lab-column-unused/, 'Final and source tables keep their normal appearance');
+});
+test('COUNT(*) dims every unused column including PK/FK and retains source aliases', () => {
+  const context = vm.createContext({ ER });
+  vm.runInContext(fs.readFileSync(require.resolve('../lab.js'), 'utf8'), context);
+  const { workingRoles, dataTable } = context.TramaLab;
+  const source = (name, alias, names, foreignKeys = []) => ({ name, alias,
+    columns: names.map(name => ({ name, key: name === 'id' ? 'PRI' : '' })),
+    foreignKeys: foreignKeys.map(name => ({ columns: [name] })) });
+  const sources = [
+    source('proprietari', 'p', ['id', 'cf', 'nominativo', 'indirizzo', 'cap', 'numero_cellulare', 'numero_fisso']),
+    source('auto', 'a', ['id', 'targa', 'marca', 'modello', 'id_proprietario'], ['id_proprietario']),
+    source('infrazioni', 'i', ['id', 'data', 'tipo', 'importo', 'id_agente', 'id_auto'], ['id_agente', 'id_auto'])
+  ];
+  const usage = { select: [], join: [{ alias: 'p', column: 'id' }, { alias: 'a', column: 'id_proprietario' },
+    { alias: 'i', column: 'id_auto' }, { alias: 'a', column: 'id' }], where: [{ alias: 'p', column: 'nominativo' }] };
+  const columns = sources.flatMap(s => s.columns.map(c => s.alias + '.' + c.name));
+  const data = { columns, rows: [columns.map(() => 1)] };
+  const roles = workingRoles({ sources, usage });
+  const html = dataTable(data, { columnRoles: roles, dimUnused: true });
+  const used = ['p.id', 'p.nominativo', 'a.id', 'a.id_proprietario', 'i.id_auto'];
+  const headers = [...html.matchAll(/<th scope="col"( class="lab-column-unused")?>([^<]+)/g)];
+  assert.deepEqual(headers.filter(match => !match[1]).map(match => match[2]), used);
+  assert.equal((html.match(/class="lab-column-unused"/g) || []).length, (18 - 5) * 2, 'Unused headers and values are grey');
+  assert.match(html, /class="lab-column-unused">i.id<span class="lab-column-roles">PK/);
+  assert.match(html, /class="lab-column-unused">i.id_agente<span class="lab-column-roles">FK/);
+  const onlyCount = dataTable(data, { columnRoles: workingRoles({ sources, usage: { select: [] } }), dimUnused: true });
+  assert.equal((onlyCount.match(/class="lab-column-unused"/g) || []).length, 18 * 2, 'COUNT(*) counts rows and does not use individual columns');
+  for (const phase of ['select', 'join', 'where', 'group', 'having', 'order']) {
+    const role = workingRoles({ sources, usage: { [phase]: [{ alias: 'i', column: 'id_agente' }] } });
+    const table = dataTable(data, { columnRoles: role, dimUnused: true });
+    assert.match(table, /<th scope="col">i.id_agente</, `A FK used by ${phase} stays visible`);
+  }
+  assert.doesNotMatch(dataTable(data, { columnRoles: roles }), /lab-column-unused/, 'Step and source tables retain their presentation');
 });
 test('Generation progress arrives before completion across split UTF-8 chunks, and errors stay visible', async () => {
   const context = vm.createContext({ ER, TextDecoder });
