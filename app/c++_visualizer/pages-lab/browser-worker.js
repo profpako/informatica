@@ -24,7 +24,7 @@ async function ast(source,standard){
   let output='',errors='';
   const clang=await tool.Clang({thisProgram:'clang++',print:s=>{output+=s+'\n';},printErr:s=>{errors+=s+'\n';}});
   tool.setUpSysroot(clang,sysroot,{'lezione.cpp':source});
-  const result=clang.callMain(['-std=c++'+standard,'-Wno-return-type','-fno-color-diagnostics','-Xclang','-ast-dump=json','-Xclang','-ast-dump-filter=__cv_user','-fsyntax-only','lezione.cpp']);
+  const result=clang.callMain(['-std=c++'+standard,'-Wno-return-type','-pedantic-errors','-fno-color-diagnostics','-Xclang','-ast-dump=json','-Xclang','-ast-dump-filter=__cv_user','-fsyntax-only','lezione.cpp']);
   if(result!==0)throw new Error(errors||'Analisi C++ non riuscita.');
   return output;
 }
@@ -76,7 +76,7 @@ async function dispatch(path,data){
   if(typeof data.input!=='string'||encoder.encode(data.input).length>10000)throw new Error('Input troppo lungo.');
   const instrumented=await callPython('instrument',data,standard);
   phase('Compilazione del programma osservato in C++'+standard+'…');
-  const compiled=await tool.compile({source:instrumented.code,fileName:'osservato.cpp',flags:['-std=c++'+standard,'-O0','-g','-fno-exceptions','-fno-color-diagnostics','-Werror=return-type'],extraFiles:{'runtime.hpp':header}});
+  const compiled=await tool.compile({source:instrumented.code,fileName:'osservato.cpp',flags:['-std=c++'+standard,'-O0','-g','-fno-exceptions','-pedantic-errors','-fno-color-diagnostics','-Werror=return-type'],extraFiles:{'runtime.hpp':header}});
   if(!compiled.module)throw new Error(compiled.compileOutput||'Compilazione non riuscita.');
   session={id:crypto.randomUUID(),module:compiled.module,manual:data.manual===true,input:data.manual?'':data.input,pending:null};
   return execute(session);
