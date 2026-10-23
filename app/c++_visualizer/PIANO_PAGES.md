@@ -19,14 +19,14 @@ esistente. Nessun cambio al sito pubblico attuale o al server locale.
   - [x] Compilazione/esecuzione in Worker, console ed errori visibili.
   - [x] Provare input preparati, array, riferimenti e puntatori.
   - [x] Provare runtime di osservazione e input manuale.
-- [ ] Verificare su GitHub Pages senza sostituire il sito esistente.
-- [ ] Documentare esiti, limiti e lavoro necessario per la parità funzionale.
-- [ ] Pubblicare il branch di prova e verificare main invariato.
+- [x] Verificare su GitHub Pages senza sostituire il sito esistente.
+- [x] Documentare esiti, limiti e lavoro necessario per la parità funzionale.
+- [x] Pubblicare il branch di prova e verificare main invariato.
 
 ## Criterio di arresto
 Questa fase termina con una dimostrazione verificata e una decisione motivata
-sulla fattibilità. Il trasferimento completo dellapplicazione richiederà
-un passo successivo: niente duplicazione dellinterfaccia o riscrittura
+sulla fattibilità. Il trasferimento completo dell’applicazione richiederà
+un passo successivo: niente duplicazione dell’interfaccia o riscrittura
 integrale prima che i punti critici siano provati.
 
 ## Ripristino
@@ -47,3 +47,31 @@ Repository pubblico di sola prova creato: profpako/informatica-wasm-lab.
 Non viene modificata la configurazione Pages di profpako/informatica.
 Limiti della prova descritti in pages-lab/README.md, compresi input tramite
 riproduzione deterministica e assenza dei sanitizer della versione nativa.
+
+## Esito della prima prova
+
+Fattibilità dimostrata su https://profpako.github.io/informatica-wasm-lab/.
+La distribuzione statica è nel repository profpako/informatica-wasm-lab;
+il sorgente riproducibile è nel branch experiment/github-pages-wasm.
+
+Su GitHub Pages, Chrome desktop: Clang C++20 ha compilato il programma libero
+con parametro per valore, riferimento C++, puntatore e array. Risultato 6 7 8,
+memoria finale x=6, y=7, v={1,8}, fotografia della procedura conclusa.
+Nessuna API locale: la versione pubblica usa il Worker e gli asset WASM del sito.
+Sul server statico di prova verificati anche C++17/C++23, input manuali con
+correzione, importazione e generazione/esecuzione del flowchart area (24).
+I tipi generati sono int espliciti, senza alias decltype residui.
+
+Build del sito: sorgente 4b23642. Prova visiva: pages-lab/verifica-pages.png.
+L’artefatto di pubblicazione è circa 36 MB compressi con scadenza di un giorno;
+questa scadenza riguarda solo il file di trasporto e NON il sito pubblicato,
+che rimane online. Pages e runner standard pubblici entro le quote gratuite.
+
+main locale/remoto e tag stabile verificati sul commit 9500f6f, senza modifiche.
+Configurazione Pages di profpako/informatica invariata (workflow del sito lezioni).
+Il sito sperimentale ha storage distinto e non sostituisce quello delle lezioni.
+
+La prova è riuscita, non è una dichiarazione di parità completa con la versione
+locale. Restano i limiti documentati in pages-lab/README.md: input per riproduzione
+deterministica, sanitizer nativi non attivi, prestazioni/dispositivi diversi
+e suite completa da verificare prima dell’uso come versione definitiva.

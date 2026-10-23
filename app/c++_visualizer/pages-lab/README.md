@@ -59,3 +59,15 @@ su un repository/sito di prova distinto da profpako/informatica, per evitare di
 sostituire il sito delle lezioni già online.
 
 Licenze e attribuzioni: THIRD_PARTY.md e file LICENSE inclusi nella distribuzione.
+
+## Esito verificato
+
+Prototipo online: https://profpako.github.io/informatica-wasm-lab/.
+Compilazione, traccia, console, memoria e fotografia della procedura verificati
+su Pages con valore/riferimento/puntatore/array e risultato 6 7 8. Sul server
+statico verificati inoltre input preparati/manuali, C++17/20/23 e flowchart area.
+Piano e risultati dettagliati: ../PIANO_PAGES.md. Schermata: verifica-pages.png.
+
+La scadenza giornaliera dell’artefatto di pubblicazione elimina solo il file
+temporaneo di trasporto; non cancella il sito e non richiede ripubblicazioni
+giornaliere. Il sito non ha una scadenza di un giorno.
