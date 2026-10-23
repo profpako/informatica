@@ -131,3 +131,18 @@ rigidi alla RAM non sono stati implementati.
 L'archivio dell'interfaccia conserva tutte le chiamate concluse fino al passo
 selezionato, comprese ripetizioni e ricorsione. Verificati nel browser ordine,
 assenza di duplicati, fotografie distinte, navigazione, aperture e pulizia.
+
+
+## Aggiornamento: input manuali e file con nome
+
+La modalità manuale sospende il processo C++ prima di ciascuna variabile letta e
+lo riprende dopo INVIO, senza ricompilare o cambiare indirizzi/frame. Verificati
+cin concatenati, errori correggibili, getline (anche vuoto), array, cicli e input
+attraverso riferimenti nelle funzioni. La modalità con input preparati resta
+coperta dalle stesse prove di console già presenti. Le sessioni locali sono
+limitate a quattro e scadono dopo 10 minuti senza risposta.
+
+La suite conclusiva comprende 73 test Python e i controlli Node su Flowchart e
+file con nome. In Chrome verificati input manuali sia C++ sia Flowchart, eco,
+pausa/ripresa automatica, input preparati, nomi distinti ricordati, file scaricati
+e selezione blocco→righe C++. Layout controllato a larghezza normale, 980 e 540 px.

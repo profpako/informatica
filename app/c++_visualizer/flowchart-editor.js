@@ -66,19 +66,25 @@ const FlowchartEditor = (() => {
       this.root.append(toolbar);
       const files = el('div', undefined, 'flow-files');
       this.newButton = this.button('Nuovo diagramma', () => this.replace(C.blank()), files);
-      this.exampleButton = this.button('Esempio area', () => this.replace(C.example()), files);
+      this.exampleButton = this.button('Esempio area', () => this.replace({...C.example(), title: 'Area del rettangolo'}), files);
       this.undoButton = this.button('Annulla', () => this.undo(), files);
       this.file = el('input'); this.file.type = 'file'; this.file.accept = '.json,application/json'; this.file.hidden = true;
       this.file.addEventListener('change', async () => {
         const file = this.file.files[0]; if (!file) return;
         try {
           if (file.size > 250000) throw new Error('File troppo grande: massimo 250 KB.');
-          const doc = C.validate(JSON.parse(await file.text())); this.replace(doc);
+          const doc = C.validate(JSON.parse(await file.text()));
+          if (!doc.title) doc.title = ProgramFiles.baseName(file.name);
+          this.replace(doc);
         } catch (error) { this.message('Apertura non riuscita: ' + error.message, true); }
         this.file.value = '';
       });
       this.openButton = this.button('Apri diagramma', () => this.file.click(), files);
-      this.button('Salva diagramma', () => this.download(JSON.stringify(this.document, null, 2), 'lezione.flow.json', 'application/json'), files);
+      this.button('Salva diagramma', () => {
+        const name = ProgramFiles.filename(this.document.title || '', '.flow.json');
+        ProgramFiles.download(JSON.stringify(this.document, null, 2), name, 'application/json');
+        this.message('File preparato: ' + name + '. Lo trovi nei download del browser.');
+      }, files);
       this.pngButton = this.button('Esporta PNG', () => this.exportPng(), files);
       files.append(this.file); this.root.append(files);
       this.functionProps = el('details', undefined, 'flow-function-props'); this.functionProps.append(el('summary', 'Parametri e risultato della subroutine'));
@@ -115,10 +121,10 @@ const FlowchartEditor = (() => {
       this.root.append(this.kindMenu);
       this.forTooltip = el('div',undefined,'flow-for-tooltip'); this.forTooltip.id = C.id();
       this.forTooltip.setAttribute('popover','manual'); this.forTooltip.setAttribute('role','tooltip'); this.root.append(this.forTooltip);
-      const preview = el('details', undefined, 'flow-preview'); preview.append(el('summary', 'C++ generato'));
+      const preview = el('section', undefined, 'flow-preview'); preview.setAttribute('aria-label', 'C++ generato'); preview.append(el('h3', 'C++ generato'));
       this.source = el('pre'); this.source.tabIndex = 0; this.source.setAttribute('aria-label', 'Sorgente C++ generato dal diagramma'); preview.append(this.source);
-      this.button('Scarica C++ generato', () => { try { this.download(this.getSource().code, 'lezione.cpp', 'text/plain'); } catch {} }, preview);
-      this.root.append(preview);
+      this.button('Scarica C++ generato', () => { try { ProgramFiles.download(this.getSource().code, ProgramFiles.filename(this.document.title || '', '.cpp'), 'text/plain'); } catch {} }, preview);
+      this.options.sourceRoot.append(preview);
     }
     chooseKind(kind) {
       this.kindSelect.value=kind;
@@ -155,9 +161,9 @@ const FlowchartEditor = (() => {
       this.kindMenu.style.top=top+'px';
       this.kindMenu.querySelector('[role="menuitem"]')?.focus({preventScroll:true});
     }
-    download(text, filename, type) {
-      const link = el('a'); link.href = URL.createObjectURL(text instanceof Blob ? text : new Blob([text], { type: type + ';charset=utf-8' }));
-      link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    setTitle(title) {
+      this.document.title = title;
+      this.options.onChange(JSON.stringify(this.document), true);
     }
     async exportPng() {
       this.pngButton.disabled=true;
@@ -183,7 +189,7 @@ const FlowchartEditor = (() => {
         const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
         if(!blob)throw new Error('Impossibile creare il PNG.');
         const name=fn.name.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,60)||'diagramma';
-        this.download(blob,'flowchart-'+name+'.png','image/png');this.message('PNG esportato: intero diagramma di '+fn.name+'().');
+        ProgramFiles.download(blob,'flowchart-'+name+'.png','image/png');this.message('PNG esportato: intero diagramma di '+fn.name+'().');
       } catch(error) { this.message('Esportazione non riuscita: '+error.message,true); }
       finally {if(url)URL.revokeObjectURL(url);this.pngButton.disabled=false;}
     }
@@ -246,9 +252,27 @@ const FlowchartEditor = (() => {
     }
     preview() {
       try {
-        this.generated = C.generate(this.document); this.source.textContent = this.generated.code;
+        this.generated = C.generate(this.document);
+        this.source.replaceChildren(...this.generated.code.split('\n').map((line, index) => {
+          const row = el('span', line || ' ', 'generated-line'); row.dataset.line = index + 1; return row;
+        }));
+        this.paintSource();
         this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : 'Clicca su una freccia (+) per inserire un blocco, oppure seleziona un blocco per modificarlo.');
       } catch (error) { this.generated = null; this.source.textContent = error.message; this.message(error.message, true); }
+    }
+    paintSource(scroll = false) {
+      this.source.querySelectorAll('.generated-line').forEach(row => {
+        const point = this.generated?.lineMap[Number(row.dataset.line)];
+        row.classList.toggle('generated-selected', !!this.selected && point?.fn === this.fnId &&
+          (point.node === this.selected || point.node === this.selected + ':entry'));
+      });
+      if (scroll) {
+        const row = this.source.querySelector('.generated-selected');
+        if (row) {
+          this.source.scrollTop = Math.max(0, row.offsetTop - this.source.offsetTop - this.source.clientHeight / 3);
+          this.source.scrollLeft = 0;
+        }
+      }
     }
     renderFunction(fn) {
       this.functionForm.replaceChildren();
@@ -403,7 +427,7 @@ const FlowchartEditor = (() => {
         }
         if(C.locate(this.document,node.owner)) {
           group.setAttribute('role','button');group.setAttribute('tabindex','0');group.setAttribute('aria-label',C.kinds[C.locate(this.document,node.owner).node.kind]+': '+node.text);
-          const select=()=>{this.selected=node.owner;this.renderInspector(this.document.functions.find(f=>f.id===this.fnId));this.renderGraph();};
+          const select=()=>{this.selected=node.owner;this.renderInspector(this.document.functions.find(f=>f.id===this.fnId));this.renderGraph();this.paintSource(true);};
           group.addEventListener('click',select);group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select();this.canvas.querySelector(`[data-node="${node.id}"]`)?.focus({preventScroll:true});}});
         }
         if(node.owner===this.selected)group.classList.add('flow-selected');drawing.append(group);

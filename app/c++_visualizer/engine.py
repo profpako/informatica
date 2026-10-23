@@ -7,6 +7,7 @@ import resource
 import shutil
 import subprocess
 import tempfile
+import time
 from roles import classify_roles
 
 ROOT = Path(__file__).resolve().parent
@@ -259,6 +260,8 @@ class Instrumenter:
                 if any(n.get("opcode") in {"++", "--", "="} for n in walk(target)):
                     self.error(target, "usa un indice senza effetti collaterali nel target di input.")
                 formatted = str("operator>>" in refs).lower()
+                gated = f'cv::input_target(({self.expression(target, True)}), {line}, {json.dumps(self.text(target))}, {json.dumps(target["type"]["qualType"])}, {formatted})'
+                rendered = self.splice(node, [(child, gated if child is target else value) for child, value in changes])
                 rendered = f'cv::input([&]() -> std::istream& {{return ({rendered});}}, ({self.expression(target, True)}), {line}, {formatted})'
             function = next((self.definitions.get(n.get('referencedDecl', {}).get('id')) for n in walk(children[0])
                              if self.definitions.get(n.get('referencedDecl', {}).get('id'))), None)
@@ -431,7 +434,105 @@ def sandbox_profile(folder, clang_resources):
             '(allow file-write* (subpath ' + json.dumps(str(folder)) + '))\n')
 
 
-def run_program(code, user_input="", flow=None):
+def trace_result(snapshots, source, instrumenter, roles, warnings, returncode=0, error=""):
+    origins = {}
+    previous_frames, last_seen, last_call = {}, {}, None
+    condition_counts = {}
+    for index, snapshot in enumerate(snapshots):
+        condition = snapshot.get('condition')
+        if condition:
+            metadata = instrumenter.conditions[condition['site']]
+            condition.update(metadata)
+            key = (condition['frame'], condition['site'])
+            if condition['action'] == 'test':
+                condition_counts[key] = condition_counts.get(key, 0) + 1
+            else:
+                condition['result'] = None
+            condition['number'] = condition_counts.get(key, 0)
+            captured = {(v['begin'], v['end']): v for v in condition['values']}
+            condition['values'] = [{**v, 'expression': source[a:b].decode()} for (a, b), v in captured.items()]
+            cursor, expanded = condition['site'], []
+            end = condition['site'] + len(metadata['expression'].encode())
+            for (a, b), value in sorted(captured.items(), key=lambda item: (item[0][0], -item[0][1])):
+                if cursor <= a < b <= end:
+                    expanded.extend([source[cursor:a].decode(), value['text']])
+                    cursor = b
+            expanded.append(source[cursor:end].decode())
+            condition['expanded'] = ''.join(expanded) if captured else metadata['expression']
+        frames = {f['id']: f for f in snapshot['frames']}
+        for ident, frame in previous_frames.items():
+            if ident not in frames and frame['name'] != 'main':
+                last_call = {'frame': ident, 'name': frame['name'], 'step': last_seen[ident]}
+        snapshot['lastCall'] = last_call
+        for ident in frames:
+            last_seen[ident] = index
+        previous_frames = frames
+        for variable in snapshot['variables']:
+            variable['role'] = roles.get(variable['declaration'], 'work')
+            if variable['parameter'] and variable['id'] not in origins:
+                frame = frames[variable['frame']]
+                descriptor = next((o for o in instrumenter.callsites.get(frame.get('site'), [])
+                                   if o['parameter'] == variable['declaration']), None)
+                if descriptor:
+                    source_variable = next((v for v in snapshot['variables']
+                                   if v['declaration'] == descriptor['source'].get('declaration')
+                                   and v['frame'] in {0, frame['caller']}), None)
+                    cell = variable['cells'][0]
+                    origin = {'kind': descriptor['kind'], 'expression': descriptor['expression'],
+                              'value': cell['value'], 'initialized': cell['initialized'],
+                              'caller': frame['caller'], 'sourceId': source_variable['id'] if source_variable else None,
+                              'sourceIndex': descriptor['source'].get('index', 0)}
+                    if source_variable:
+                        source_frame = frames.get(source_variable['frame'])
+                        origin['sourceLabel'] = (source_frame['name'] + '()' if source_frame else 'Globali/statiche') + ' · ' + source_variable['name']
+                        if source_variable['array']:
+                            origin['sourceLabel'] += f"[{origin['sourceIndex']}]"
+                    origins[variable['id']] = origin
+            if variable['id'] in origins:
+                variable['origin'] = origins[variable['id']]
+    if returncode and not snapshots[-1].get("error"):
+        runtime_error = re.search(r"runtime error: ([^\n]+)", error)
+        detail = runtime_error[1] if runtime_error else (error[:1500] or f"codice {returncode}")
+        detail = detail.replace("division by zero", "divisione per zero").replace("signed integer overflow", "overflow di un intero con segno")
+        snapshots[-1]["error"] = "Esecuzione interrotta: " + detail
+        snapshots[-1]["event"] = "errore"
+    return {"steps": snapshots, "error": snapshots[-1].get("error", ""), "warnings": warnings}
+
+def read_trace(path):
+    snapshots = []
+    if path.exists():
+        for line in path.read_bytes().splitlines():
+            try:
+                snapshots.append(json.loads(line))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                break
+    return snapshots
+
+
+def execute_interactive(command, options, trace_path, interactive, decorate):
+    with subprocess.Popen(command, stdin=subprocess.PIPE, text=True, **options) as process:
+        deadline, seen = time.monotonic() + 8, 0
+        try:
+            while process.poll() is None:
+                snapshots = read_trace(trace_path)
+                request = snapshots[-1].get('inputRequest') if snapshots else None
+                if request and request['number'] != seen:
+                    seen = request['number']
+                    answer = interactive(decorate(snapshots))
+                    if not isinstance(answer, str) or '\n' in answer or '\r' in answer or len(answer.encode()) > 2000:
+                        raise CodeError('Inserisci una sola risposta di massimo 2.000 byte.')
+                    process.stdin.write(answer + '\n'); process.stdin.flush()
+                    deadline = time.monotonic() + 8
+                if time.monotonic() > deadline:
+                    raise subprocess.TimeoutExpired(command, 8)
+                time.sleep(0.01)
+        finally:
+            if process.poll() is None:
+                process.kill(); process.wait()
+        return subprocess.CompletedProcess(command, process.returncode)
+
+
+def run_program(code, user_input="", flow=None, interactive=None):
     if not isinstance(user_input, str) or len(user_input.encode()) > 10000:
         raise CodeError("Input troppo lungo: massimo 10.000 byte.")
     compiler = shutil.which("clang++")
@@ -475,83 +576,22 @@ def run_program(code, user_input="", flow=None):
             clang_resources = subprocess.run([compiler, "-print-resource-dir"], capture_output=True, text=True, timeout=5).stdout.strip()
             profile.write_text(sandbox_profile(folder, clang_resources))
             with (directory / "stderr.txt").open("w+") as stderr, (directory / "stdout.txt").open("w") as stdout:
-                execution = subprocess.run([sandbox, "-f", str(profile), str(executable)], input=user_input, text=True,
-                                           stdout=stdout, stderr=stderr, cwd=folder, timeout=8, preexec_fn=limits,
-                                           env={"PATH": "/usr/bin:/bin", "UBSAN_OPTIONS": "print_stacktrace=0"})
+                command = [sandbox, "-f", str(profile), str(executable)]
+                options = dict(stdout=stdout, stderr=stderr, cwd=folder, preexec_fn=limits,
+                               env={"PATH": "/usr/bin:/bin", "UBSAN_OPTIONS": "print_stacktrace=0"})
+                if interactive is None:
+                    execution = subprocess.run(command, input=user_input, text=True, timeout=8, **options)
+                else:
+                    options['env']['CPPVIZ_MANUAL_INPUT'] = '1'
+                    decorate = lambda snapshots: trace_result(snapshots, source, instrumenter, roles, diagnostic(parsed.stderr, path, prefix_lines))
+                    execution = execute_interactive(command, options, directory / 'trace.jsonl', interactive, decorate)
                 stderr.seek(0)
                 error = stderr.read(8000)
             trace_path = directory / "trace.jsonl"
-            snapshots = []
-            if trace_path.exists():
-                for line in trace_path.read_text().splitlines():
-                    try:
-                        snapshots.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        break
+            snapshots = read_trace(trace_path)
             if not snapshots:
                 raise CodeError(f"Il programma non ha prodotto una traccia (codice {execution.returncode}). " + error[:1500])
-            origins = {}
-            previous_frames, last_seen, last_call = {}, {}, None
-            condition_counts = {}
-            for index, snapshot in enumerate(snapshots):
-                condition = snapshot.get('condition')
-                if condition:
-                    metadata = instrumenter.conditions[condition['site']]
-                    condition.update(metadata)
-                    key = (condition['frame'], condition['site'])
-                    if condition['action'] == 'test':
-                        condition_counts[key] = condition_counts.get(key, 0) + 1
-                    else:
-                        condition['result'] = None
-                    condition['number'] = condition_counts.get(key, 0)
-                    captured = {(v['begin'], v['end']): v for v in condition['values']}
-                    condition['values'] = [{**v, 'expression': source[a:b].decode()} for (a, b), v in captured.items()]
-                    cursor, expanded = condition['site'], []
-                    end = condition['site'] + len(metadata['expression'].encode())
-                    for (a, b), value in sorted(captured.items(), key=lambda item: (item[0][0], -item[0][1])):
-                        if cursor <= a < b <= end:
-                            expanded.extend([source[cursor:a].decode(), value['text']])
-                            cursor = b
-                    expanded.append(source[cursor:end].decode())
-                    condition['expanded'] = ''.join(expanded) if captured else metadata['expression']
-                frames = {f['id']: f for f in snapshot['frames']}
-                for ident, frame in previous_frames.items():
-                    if ident not in frames and frame['name'] != 'main':
-                        last_call = {'frame': ident, 'name': frame['name'], 'step': last_seen[ident]}
-                snapshot['lastCall'] = last_call
-                for ident in frames:
-                    last_seen[ident] = index
-                previous_frames = frames
-                for variable in snapshot['variables']:
-                    variable['role'] = roles.get(variable['declaration'], 'work')
-                    if variable['parameter'] and variable['id'] not in origins:
-                        frame = frames[variable['frame']]
-                        descriptor = next((o for o in instrumenter.callsites.get(frame.get('site'), [])
-                                           if o['parameter'] == variable['declaration']), None)
-                        if descriptor:
-                            source_variable = next((v for v in snapshot['variables']
-                                           if v['declaration'] == descriptor['source'].get('declaration')
-                                           and v['frame'] in {0, frame['caller']}), None)
-                            cell = variable['cells'][0]
-                            origin = {'kind': descriptor['kind'], 'expression': descriptor['expression'],
-                                      'value': cell['value'], 'initialized': cell['initialized'],
-                                      'caller': frame['caller'], 'sourceId': source_variable['id'] if source_variable else None,
-                                      'sourceIndex': descriptor['source'].get('index', 0)}
-                            if source_variable:
-                                source_frame = frames.get(source_variable['frame'])
-                                origin['sourceLabel'] = (source_frame['name'] + '()' if source_frame else 'Globali/statiche') + ' · ' + source_variable['name']
-                                if source_variable['array']:
-                                    origin['sourceLabel'] += f"[{origin['sourceIndex']}]"
-                            origins[variable['id']] = origin
-                    if variable['id'] in origins:
-                        variable['origin'] = origins[variable['id']]
-            if execution.returncode and not snapshots[-1].get("error"):
-                runtime_error = re.search(r"runtime error: ([^\n]+)", error)
-                detail = runtime_error[1] if runtime_error else (error[:1500] or f"codice {execution.returncode}")
-                detail = detail.replace("division by zero", "divisione per zero").replace("signed integer overflow", "overflow di un intero con segno")
-                snapshots[-1]["error"] = "Esecuzione interrotta: " + detail
-                snapshots[-1]["event"] = "errore"
-            return {"steps": snapshots, "error": snapshots[-1].get("error", ""), "warnings": diagnostic(parsed.stderr, path, prefix_lines)}
+            return trace_result(snapshots, source, instrumenter, roles, diagnostic(parsed.stderr, path, prefix_lines), execution.returncode, error)
         except subprocess.TimeoutExpired:
             raise CodeError("Tempo massimo superato. Riduci il programma e controlla che i cicli terminino.") from None
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:

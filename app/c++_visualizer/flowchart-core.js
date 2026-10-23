@@ -76,6 +76,8 @@ const FlowchartCore = (() => {
         !Array.isArray(document.functions) || document.functions.length < 1 || document.functions.length > 20)
       fail('File flowchart non valido: formato o versione non riconosciuti.');
     if(document.scope!==undefined&&!['function','cpp'].includes(document.scope))fail('Ambito delle variabili non valido.');
+    if (document.title !== undefined && (typeof document.title !== 'string' || document.title.length > 80 || /[\u0000-\u001f\u007f]/.test(document.title)))
+      fail('Nome programma non valido: usa al massimo 80 caratteri su una riga.');
     const ids = new Set(); let count = 0;
     function unique(value) {
       if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,60}$/.test(value) || ids.has(value))

@@ -35,7 +35,8 @@ La sintassi dei campi segue le convenzioni concordate, simili ad AlgoBuild:
 - **Input**: una variabile per riga. `base` crea un double se non esiste;
   `int altezza` o `string nome` specificano il tipo iniziale. Una variabile già
   dichiarata conserva il suo tipo. Le celle si scrivono come `v[i]` dopo aver
-  dichiarato l'array. I valori di input vanno forniti prima di avviare la traccia.
+  dichiarato l'array. I valori si possono preparare prima oppure inserire nella
+  console, una variabile alla volta, scegliendo Inserimento input.
   **Tipo lettura → Riga completa** usa getline e crea una string se nuova.
 - **Output**: un'espressione per riga, per esempio `"Area: "` e poi `area`.
   Le espressioni sono mostrate in sequenza: **OUT** continua sulla stessa riga,
@@ -94,8 +95,10 @@ L'esecuzione richiede il server locale descritto sotto.
   blocchi modificabili, con un diagramma per subroutine. Il codice originale resta
   nell'editor C++; gli input vengono copiati per la prova del diagramma. Annulla
   ripristina il diagramma precedente. Una conversione fallita non sostituisce il lavoro.
-- **Flowchart → C++**: espandere **C++ generato**, sotto il diagramma, per leggere
-  il sorgente equivalente; **Scarica C++ generato** lo salva come `.cpp`.
+- **Flowchart → C++**: il riquadro **C++ generato** è sempre visibile nella colonna
+  destra sotto la sezione della memoria; **Scarica C++ generato** lo salva come `.cpp`.
+  Cliccando un blocco si evidenziano le righe corrispondenti e la prima viene
+  portata in vista. Le istruzioni di un blocco multilinea vengono evidenziate insieme.
   Il pulsante di modalità **C++** torna al sorgente originale conservato: le modifiche
   successive al diagramma non sovrascrivono automaticamente quell'editor.
 
@@ -103,8 +106,8 @@ I diagrammi importati da C++ riportano una nota: conservano gli ambiti C++, comp
 omonimie nei blocchi, dichiarazioni di array/costanti/riferimenti nei rami e contatori
 locali al FOR. Le dichiarazioni restano esplicite. Questo permette di osservare lo
 stesso comportamento del codice originale, distinto dalle variabili di subroutine
-dei diagrammi creati in stile AlgoBuild. L'input concatenato C++ mantiene una singola
-eco nella console; getline conserva la lettura della riga intera.
+dei diagrammi creati in stile AlgoBuild. Con input preparati, il cin concatenato
+mantiene una singola eco nella console; getline conserva la lettura della riga intera.
 
 Sono importabili funzioni/procedure con parametri per valore, riferimento, puntatore
 e array (anche const), dichiarazioni semplici, console, assegnamenti, IF, FOR,
@@ -113,6 +116,48 @@ sono esclusi globali/statiche, switch, blocchi anonimi separati, overload, param
 predefiniti, puntatori costanti (`int *const p`) e varianti di getline con stream/delimitatori personalizzati.
 Il compilatore e i limiti generali del visualizzatore restano applicati. Il messaggio
 indica la riga del costrutto escluso; non viene prodotta una conversione parziale.
+
+## Salvare e riaprire i programmi
+
+Scrivere un **Nome programma**, per esempio Area del rettangolo. **Salva .cpp**
+scarica il sorgente con quel nome; **Apri .cpp** carica un file UTF-8 fino a 30.000
+byte e ne usa il nome. Il contenuto è validato prima di sostituire l'editor; un
+file non leggibile lascia il programma corrente disponibile. L'apertura di un
+nuovo sorgente svuota gli input del precedente programma.
+
+In modalità Flowchart, **Salva diagramma** scarica un `.flow.json` con il nome
+scelto e tutte le subroutine. **Apri diagramma** ripristina anche il nome; per i
+vecchi documenti senza titolo viene usato il nome del file. **Scarica C++ generato**
+usa lo stesso nome del diagramma. Nuovo programma/diagramma riparte senza nome.
+I nomi del C++ e del Flowchart sono ricordati separatamente; la conversione porta
+il nome del sorgente nel nuovo diagramma. Rinominare non interrompe l'esecuzione.
+
+I file si trovano nei download del browser, oppure nella cartella scelta dal
+browser. Senza un nome viene usato programma.cpp o programma.flow.json. Spazi e
+accenti vengono conservati; i caratteri non validi per un nome di file sono rimossi.
+Il `.cpp` contiene il solo sorgente, il JSON il diagramma modificabile: gli input
+restano nel browser e non sono inclusi nei file.
+
+## Input durante l'esecuzione
+
+La scelta **Manualmente, una variabile alla volta** vale sia per C++ sia per
+Flowchart. Raggiunta una lettura con i passi o l'animazione, nella console compare
+il nome della variabile e il tipo. Scrivere il valore e premere **INVIO** o **Invia**.
+Anche `cin >> a >> b` chiede due valori distinti. `getline` permette una riga con
+spazi e anche una riga vuota; le regole C++ sul newline lasciato da cin restano
+applicate (usare cin.ignore() quando necessario).
+
+Il processo C++ è realmente sospeso e riprende nello stesso punto, con gli stessi
+indirizzi e gli stessi frame. Un valore non valido viene mostrato in console e
+richiesto nuovamente senza riavviare. Se l'animazione era in corso, riprende dopo
+l'inserimento. Si può tornare ai passi precedenti; per cambiare un dato già inviato
+occorre avviare una nuova esecuzione. **Annulla esecuzione**, una modifica al codice,
+un cambio di modalità o la chiusura della pagina interrompono la sessione.
+
+Restano i limiti di input del visualizzatore: 10.000 byte complessivi e 2.000 byte
+per singola risposta. Sono possibili fino a quattro sessioni locali; una pausa
+senza risposta scade dopo 10 minuti. Il tempo di attesa dell'utente è distinto dal
+limite di elaborazione del programma.
 
 ## Avvio su macOS
 
@@ -146,7 +191,7 @@ rimangono salvati nel browser.
 ## Una lezione
 
 1. Scrivere/incollare codice nell'editor vuoto, oppure scegliere uno dei sei esempi facoltativi. **Nuovo programma** svuota editor e input e permette di ripartire da zero.
-2. Inserire nel campo **Input del programma** tutti i valori richiesti da `cin`, separati da spazi o INVIO. Ogni istruzione di lettura mostra nella console i dati che consuma, seguiti da INVIO: due `cin` separati mostrano due risposte anche con input `4 6`. Una lettura concatenata (`cin >> a >> b`) mostra un'unica risposta; `getline` mantiene spazi e righe.
+2. Scegliere **Inserimento input**. Con **Preparati prima dell’esecuzione**, inserire nel campo **Input del programma** tutti i valori richiesti da `cin`, separati da spazi o INVIO. Con **Manualmente, una variabile alla volta**, seguire i passi e inserire ogni valore nella console quando viene richiesto, premendo INVIO. Ogni istruzione di lettura mostra nella console i dati che consuma, seguiti da INVIO: due `cin` separati mostrano due risposte anche con input `4 6`. Una lettura concatenata (`cin >> a >> b`) con input preparati mostra un'unica risposta; `getline` mantiene spazi e righe.
 3. Premere **Visualizza esecuzione**.
 4. Usare **Avanti**, **Indietro**, il cursore o la riproduzione automatica.
 5. Osservare la riga evidenziata, le celle e i frame. **Indirizzi** mostra gli
@@ -209,7 +254,8 @@ per esempio cicli, switch, indici calcolati e puntatori riassegnati possono prod
 una classificazione conservativa. Non è una deduzione dell'intenzione del docente.
 
 **Testo grande** aumenta la leggibilità in proiezione. Codice e input vengono
-ricordati nello storage locale del browser; **Scarica .cpp** salva il sorgente.
+ricordati nello storage locale del browser; **Salva .cpp** salva il sorgente con
+il nome indicato in Nome programma.
 Al primo avvio l'editor è vuoto; nelle aperture successive viene recuperato il codice
 salvato. Caricare un esempio o scegliere **Nuovo programma** sostituisce il contenuto
 dell'editor: scaricare prima il codice che si desidera conservare.
@@ -293,8 +339,9 @@ cicli, funzioni, riferimenti, puntatori di base, ambiti e console.
 - Le inizializzazioni globali con chiamate a funzione, i ritorni per riferimento
   o puntatore, l'aritmetica dei puntatori e le dichiarazioni dentro la condizione
   di `if`/`while` non sono inclusi. `main` deve avere forma `int main()`.
-- Gli input vanno forniti prima dell'avvio; se finiscono, la traccia si arresta
-  con un messaggio e si può completare il campo e riavviare.
+- Con input preparati, se finiscono la traccia si arresta con un messaggio e si
+  può completare il campo e riavviare. Con input manuali il processo resta in attesa
+  della risposta; una sessione scade dopo 10 minuti senza input.
 - Limiti: 30.000 byte di codice, 10.000 byte di input, 100 celle per array,
   800 stati, 40 chiamate annidate e 20.000 caratteri di output. Il contenuto delle
   stringhe nella memoria visualizzata è troncato a 2.000 caratteri per cella.
@@ -315,8 +362,9 @@ didattico del docente, non un servizio pubblico per eseguire sorgenti anonimi.
 ## Verifiche
 
 ```sh
-python3 -m unittest test_engine test_server test_roles test_flowchart_engine test_flowchart_import -v
+python3 -m unittest test_engine test_server test_roles test_flowchart_engine test_flowchart_import test_interactive -v
 node test_flowchart.cjs
+node test_program_files.cjs
 node --check app.js
 node --check flowchart-editor.js
 ```

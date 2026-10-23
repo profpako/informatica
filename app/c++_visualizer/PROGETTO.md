@@ -19,7 +19,7 @@ un'identità distinta; un riferimento è un alias verso l'indirizzo originale.
 Le celle non inizializzate non vengono lette per generare la visualizzazione.
 
 La navigazione usa fotografie registrate: tornare indietro non riesegue il programma.
-Gli input si inseriscono prima dell'avvio in un campo dedicato. La modifica del
+Gli input si possono preparare prima dell'avvio oppure fornire una variabile alla volta durante l'esecuzione. La modifica del
 codice o dell'input invalida la traccia. Sono previsti inizio, precedente, successivo,
 fine, cursore dei passi e riproduzione automatica interrompibile.
 
@@ -161,3 +161,29 @@ registrazione e interfaccia. Prove automatiche per il motore e una prova nel bro
 devono confermare valore/riferimento, array, ambiti, errori e navigazione. I limiti
 osservati vanno aggiornati in COSTRUTTI.md, senza dichiarare supporto solo perché
 un programma compila.
+
+
+## Programmi con nome e input manuali
+
+Il nome è un metadato opzionale del documento Flowchart, validato e conservato nei
+JSON; il nome C++ è distinto e ricordato nel browser. I download condividono un
+helper locale che normalizza nomi di file e UTF-8. L'apertura C++ valida contenuto,
+dimensione e versione dell'editor prima di sostituirlo. Nessun archivio remoto.
+
+In modalità Flowchart la colonna sinistra è più ampia e il C++ generato si trova
+nella colonna destra sotto la memoria. La mappa riga→blocco già usata dall'esecuzione
+colora le righe generate dal blocco selezionato, anche quando non consecutive.
+
+Per l'input manuale il processo nativo rimane in esecuzione e bloccato sul pipe
+stdin. La strumentazione richiede ogni target dopo aver valutato la parte sinistra
+del cin concatenato, prima della singola estrazione. Una copia locale del valore
+permette di verificare la risposta senza scrivere nella variabile su input errati.
+Il runtime registra le attese e le letture; i record sono arricchiti con la stessa
+funzione usata per la traccia completa, senza ricompilare o rieseguire i passi già
+osservati. Gli indirizzi e i frame restano identici tra le risposte.
+
+Il server gestisce fino a quattro sessioni in thread con code di eventi/risposte,
+identificatori casuali e richieste numerate per evitare invii duplicati. Origine,
+host, token, sandbox e limiti restano applicati. Le attese utente hanno scadenza di
+10 minuti; l'elaborazione tra risposte conserva il limite di tempo. Annullamento,
+scadenza e chiusura fermano il processo e rimuovono i temporanei.

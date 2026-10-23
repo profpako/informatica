@@ -638,3 +638,79 @@ Verifica conclusiva del 2026-10-23:
 Le precedenti caselle sulla riapertura di file dal browser restano annotazioni
 storiche di prove impedite dall'estensione; validazione, migrazione e round-trip JSON
 sono coperti dai test. Le nuove anteprime sopra sostituiscono quelle provvisorie.
+
+## Salvataggio dei programmi con nome
+
+- [x] Aggiungere un campo Nome programma comune alle modalità C++ e Flowchart.
+  - [x] Ricordare separatamente i nomi del codice e del diagramma nel browser.
+  - [x] Usare nomi di file validi, conservando accenti e spazi leggibili.
+- [x] Salvare il C++ come file .cpp con il nome scelto e aggiungere Apri .cpp.
+  - [x] Validare dimensione e contenuto prima di sostituire il sorgente.
+  - [x] Usare il nome del file aperto senza alterare il contenuto C++.
+- [x] Usare il nome scelto per il JSON del diagramma e il C++ generato.
+  - [x] Conservare il nome anche nel documento Flowchart e ripristinarlo all'apertura.
+  - [x] Mantenere compatibilità con diagrammi salvati senza nome e con Annulla.
+- [x] Verificare nomi, apertura/salvataggio e conservazione al ricaricamento.
+- [x] Aggiornare guida e README con la posizione dei file salvati.
+
+Ambito: campo nome e comandi file nell'interfaccia, metadato opzionale del documento
+Flowchart, test e documentazione. Salvataggio tramite download locale, senza cloud,
+account o librerie aggiuntive; codice e diagramma continuano ad avere copie distinte.
+Il file .cpp contiene il solo sorgente, mentre il JSON conserva il diagramma
+modificabile. Gli input restano ricordati nel browser come prima.
+
+## Schermata Flowchart e input interattivi
+
+- [x] Dare più spazio alla colonna Flowchart quando è selezionata questa modalità.
+- [x] Mostrare il C++ generato nella colonna destra sotto la sezione memoria,
+  lasciando tutta la larghezza sinistra al diagramma (posizione confermata dal docente).
+  - [x] Mantenere memoria, console e comandi di esecuzione leggibili.
+  - [x] Verificare anche una finestra più stretta.
+- [x] Aggiungere scelta fra input preparati e input manuali durante l'esecuzione.
+  - [x] Individuare nel runtime le singole variabili lette e il punto di attesa.
+  - [x] Chiedere un valore alla volta, anche con cin concatenati, e preservare l'eco.
+  - [x] Riprendere l'esecuzione e gestire valori non validi, fine e nuova esecuzione.
+  - [x] Conservare navigazione a passi, velocità, memoria e fotografie corrette.
+- [x] Verificare entrambi i modi con C++ e Flowchart e aggiornare la guida.
+
+Nuove richieste aggiunte prima di completare il salvataggio con nome. L'esecuzione
+attuale registra una traccia nativa con input anticipati: prima della modifica si
+verifica come introdurre l'attesa senza alterare i risultati del programma.
+
+### Collegamento blocco → C++ generato
+
+- [x] Usare la mappa riga/blocco esistente per evidenziare il C++ del blocco cliccato.
+- [x] Portare in vista la prima riga corrispondente senza perdere la selezione nel diagramma.
+- [x] Gestire blocchi multilinea, cicli e cambio di subroutine; verificare nel browser.
+
+
+Verifiche della revisione:
+- 73 test Python superati in 123,300 s: tutte le suite del motore/ruoli/API/
+  Flowchart/importatore, più cinque prove delle sessioni reali e una delle API.
+- Node: nomi di file con accenti/spazi, normalizzazione caratteri, nomi riservati,
+  limiti, UTF-8, file binari respinti, titolo JSON e compatibilità senza titolo;
+  suite Flowchart invariata e controlli sintattici superati.
+- Chrome su origine separata: scaricati e letti realmente .cpp e .flow.json con
+  il nome richiesto; metadato titolo e contenuto C++ conservati. Nomi distinti
+  ricordati al cambio modalità/ricaricamento e ripristinati con Annulla.
+- Input manuali C++: valore errato abc, correzione 4, altezza 6, console coerente
+  e risultato 24. Flowchart: 5 e 7 con pausa/ripresa dell'animazione, risultato 35;
+  poi input preparati 5 e 8, risultato 40. Nei test nativi gli indirizzi restano
+  identici e il prefisso della traccia è preservato tra le risposte.
+- Righe evidenziate: INPUT singolo, blocco input con prompt/dichiarazione/lettura
+  (tre righe), chiamata con risultato e return nella subroutine; selezione
+  cancellata al cambio subroutine. C++ visibile nella colonna destra sotto memoria.
+- Flowchart largo 854 px nella finestra da 1440 px. A 980 e 540 px nessuna
+  eccedenza orizzontale della pagina. Ripristinata la dimensione normale.
+- Anteprima: flowchart-programma-con-nome.png. La riapertura da selettore file
+  del browser non è stata riprovata per il limite dell'estensione già annotato;
+  lettura/validazione e round-trip dei contenuti sono verificati nei test.
+
+Le sessioni manuali usano pipe stdin, thread e code della libreria standard;
+restano applicati isolamento, token/origine e limiti. Nessun servizio esterno,
+dipendenza o archivio cloud aggiunto. Pubblicazione GitHub richiesta dal docente
+al termine della revisione.
+
+Server abituale aggiornato: PID 38963 sulla porta 8765. Verificati il nuovo asset
+program-files.js e il percorso reale API avvio manuale → richiesta n → risposta 9
+→ console «9\n18», con sessione conclusa. Server temporaneo 18779 fermato.

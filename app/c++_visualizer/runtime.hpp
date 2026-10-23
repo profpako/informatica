@@ -81,6 +81,8 @@ protected:
     }
 public:
     void reset(std::string text) { data = std::move(text); setg(data.data(), data.data(), data.data() + data.size()); }
+    void append(const std::string &text) { auto offset = position(); data += text; setg(data.data(), data.data() + offset, data.data() + data.size()); }
+    bool available() const { return gptr() != egptr(); }
     std::size_t position() const { return gptr() - data.data(); }
     std::string consumed(std::size_t start, bool formatted, bool failed) const {
         auto end = position();
@@ -103,6 +105,10 @@ struct State {
     std::size_t inputStart = 0;
     int inputDepth = 0;
     bool formattedInput = true;
+    bool manual = false, waiting = false;
+    int inputRequest = 0;
+    std::string inputName, inputType, inputError;
+    bool inputFormatted = true;
     std::streambuf *old = nullptr;
     std::streambuf *oldInput = nullptr;
     int next = 1, nextCall = 1, steps = 0, line = 0;
@@ -173,6 +179,12 @@ inline void snapshot(int line, const std::string &event, const std::string &erro
         }
         s.trace << "]}";
     } else s.trace << "null";
+    s.trace << ",\"inputRequest\":";
+    if (s.waiting && event == "attesa input")
+        s.trace << "{\"number\":" << s.inputRequest << ",\"target\":" << quote(s.inputName)
+                << ",\"type\":" << quote(s.inputType) << ",\"formatted\":" << (s.inputFormatted ? "true" : "false")
+                << ",\"error\":" << quote(s.inputError) << '}';
+    else s.trace << "null";
     s.trace << "}\n";
     s.trace.flush();
     ++s.steps;
@@ -311,6 +323,28 @@ template<class T> T *pointer(T *p, int line) {
             return p;
     fail(p ? "Il puntatore non individua una variabile attiva." : "Dereferenziazione di nullptr.", line);
 }
+template<class T> T &input_target(T &target, int line, const char *name, const char *type, bool formatted) {
+    auto &s = state();
+    if (!s.manual || (!formatted && s.input.available())) return target;
+    if constexpr (std::is_array_v<T>) fail("Leggi le singole celle dell'array oppure usa string.", line);
+    else {
+        s.inputName = name; s.inputType = type; s.inputFormatted = formatted; s.inputError.clear();
+        std::istream terminal(s.oldInput);
+        for (;;) {
+            s.waiting = true; ++s.inputRequest; step(line, "attesa input"); s.waiting = false;
+            std::string answer;
+            if (!std::getline(terminal, answer)) fail("Input manuale interrotto.", line);
+            std::istringstream probe(answer + "\n"); probe.copyfmt(std::cin);
+            T candidate{};
+            bool valid = false;
+            if (formatted) valid = bool(probe >> candidate);
+            else if constexpr (std::is_same_v<T, std::string>) valid = bool(std::getline(probe, candidate));
+            if (formatted && valid) { probe >> std::ws; valid = probe.eof(); }
+            if (valid) { s.input.append(answer + "\n"); std::cin.clear(); return target; }
+            echo_input(answer + "\n"); s.inputError = "Valore non valido per " + s.inputType + ". Inserisci un solo valore.";
+        }
+    }
+}
 template<class Read, class T> std::istream &input(Read read, T &target, int line, bool formatted) {
     auto &s = state();
     const bool outer = s.inputDepth++ == 0;
@@ -318,9 +352,10 @@ template<class Read, class T> std::istream &input(Read read, T &target, int line
     auto &stream = read();
     --s.inputDepth;
     // Una lettura concatenata corrisponde a una sola risposta nella console.
-    if (outer || !stream) echo_input(s.input.consumed(s.inputStart, s.formattedInput, !stream));
+    if (!s.manual && (outer || !stream)) echo_input(s.input.consumed(s.inputStart, s.formattedInput, !stream));
     if (!stream) fail("Input esaurito o non valido. Completa il campo Input del programma e riavvia.", line);
     mark(&target);
+    if (s.manual) { echo_input(s.input.consumed(s.inputStart, formatted, false)); step(line, "input letto"); s.inputStart = s.input.position(); }
     return stream;
 }
 template<class T> bool condition(const T &test, int line) {
@@ -357,7 +392,8 @@ template<class T> T returned(T result, int line) {
 }
 inline void start() {
     auto &s = state();
-    s.input.reset(std::string(std::istreambuf_iterator<char>(std::cin), {}));
+    s.manual = std::getenv("CPPVIZ_MANUAL_INPUT") != nullptr;
+    s.input.reset(s.manual ? "" : std::string(std::istreambuf_iterator<char>(std::cin), {}));
     s.oldInput = std::cin.rdbuf(&s.input);
     s.old = std::cout.rdbuf(s.console.rdbuf());
 }

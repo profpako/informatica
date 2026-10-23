@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 from engine import CodeError, run_program
 from flowchart_import import import_flowchart
+import interactive
 
 ROOT = Path(__file__).resolve().parent
 TOKEN = secrets.token_urlsafe(32)
@@ -40,7 +41,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {'token': TOKEN, 'examples': json.loads((ROOT / 'examples.json').read_text())})
         assets = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript; charset=utf-8'), '/style.css': ('style.css', 'text/css; charset=utf-8')}
         assets.update({f'/{name}': (name, 'text/css; charset=utf-8' if name.endswith('.css') else 'text/javascript; charset=utf-8')
-                       for name in ['flowchart-core.js', 'flowchart-editor.js', 'flowchart.css']})
+                       for name in ['flowchart-core.js', 'flowchart-editor.js', 'flowchart.css', 'program-files.js']})
         if path not in assets:
             return self.send(404, {'error': 'Risorsa non trovata.'})
         name, mime = assets[path]
@@ -50,7 +51,7 @@ class Handler(BaseHTTPRequestHandler):
         origins = {f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}'}
         if not self.valid_host() or self.headers.get('Origin') not in origins or not secrets.compare_digest(self.headers.get('X-Visualizer-Token', ''), TOKEN):
             return self.send(403, {'error': 'Richiesta non autorizzata. Ricarica la pagina locale.'})
-        if self.path not in {'/api/run','/api/import-flowchart'}:
+        if self.path not in {'/api/run','/api/import-flowchart','/api/input','/api/cancel'}:
             return self.send(404, {'error': 'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length', '0'))
@@ -61,6 +62,12 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Richiesta non valida.')
             if self.path == '/api/import-flowchart':
                 result = {'document':import_flowchart(data.get('code'))}
+            elif self.path == '/api/input':
+                result = interactive.answer(data.get('session'), data.get('request'), data.get('value'))
+            elif self.path == '/api/cancel':
+                interactive.cancel(data.get('session')); result = {'cancelled': True}
+            elif data.get('manual') is True:
+                result = interactive.start(data.get('code'), data.get('flow'))
             else:
                 arguments = (data.get('code'), data.get('input', ''))
                 result = run_program(*arguments, flow=data['flow']) if 'flow' in data else run_program(*arguments)
@@ -87,6 +94,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        interactive.close_all()
         server.server_close()
 
 

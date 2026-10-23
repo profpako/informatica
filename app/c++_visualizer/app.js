@@ -1,8 +1,9 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const code = $('code'), input = $('input');
+const code = $('code'), input = $('input'), programName = $('program-name');
 let token = '', examples = [], steps = [], position = 0, timer = null, version = 0, retainedMemory = null;
 let selectedVariable = null, lastRenderedStep = null, retainedCalls = null;
+let manualSession = null, resumeAfterInput = false;
 const roleLabels = { input: 'Input', output: 'Output', inout: 'Input/Output', work: 'Lavoro' };
 const storage = {
   get(key) { try { return localStorage.getItem('cppviz-' + key); } catch { return null; } },
@@ -10,19 +11,26 @@ const storage = {
 };
 let mode = 'cpp';
 const flowEditor = new FlowchartEditor($('flow-pane'), {
+  sourceRoot: $('flow-code-pane'),
   saved: storage.get('flowchart'),
-  onChange(document) { storage.set('flowchart', document); if (mode === 'flow') invalidate(); },
+  onChange(document, metadataOnly = false) {
+    storage.set('flowchart', document);
+    if (mode === 'flow' && !metadataOnly) { programName.value = JSON.parse(document).title || ''; invalidate(); }
+  },
   onEdit() { invalidate(); }
 });
 function setMode(next, initial = false) {
   if (!initial && mode === next) return;
   if (!initial) storage.set(mode === 'cpp' ? 'input' : 'flow-input', input.value);
   mode = next;
+  document.body.classList.toggle('flow-mode', mode === 'flow');
   $('cpp-pane').hidden = $('cpp-examples').hidden = mode === 'flow';
   $('flow-pane').hidden = mode !== 'flow';
+  $('flow-code-pane').hidden = mode !== 'flow';
   $('mode-cpp').setAttribute('aria-pressed', String(mode === 'cpp'));
   $('mode-flow').setAttribute('aria-pressed', String(mode === 'flow'));
   $('program-language').textContent = mode === 'flow' ? 'Diagramma a blocchi · esecuzione C++17' : 'C++17';
+  programName.value = mode === 'flow' ? flowEditor.document.title || '' : storage.get('program-name') || '';
   input.value = storage.get(mode === 'cpp' ? 'input' : 'flow-input') ?? '';
   storage.set('mode', mode);
   if (!initial) invalidate();
@@ -54,6 +62,7 @@ function controls() {
   $('counter').textContent = absent ? 'Nessuna esecuzione' : `Passo ${position + 1} di ${steps.length}`;
 }
 function invalidate() {
+  cancelManual();
   version++;
   pause();
   steps = []; position = 0;
@@ -187,6 +196,7 @@ function renderRetiredVariables(record, content) {
   }
 }
 function describe(step) {
+  if (step.inputRequest) return `Riga ${step.line}. In attesa del valore di ${step.inputRequest.target} (${step.inputRequest.type}).`;
   const line = `Riga ${step.line}. `;
   if (step.error) return line + step.error;
   if (step.event === 'fine') return $('memory-clear').value === 'next-run'
@@ -328,6 +338,7 @@ function renderMemory(step, previous, frozen = false, concluded = null) {
   if (!groups.length) $('memory').append(element('p', 'Nessuna variabile da mostrare.', 'no-vars'));
 }
 function render() {
+  renderManual();
   if (!steps.length) {
     flowEditor.clearTrace();
     renderCondition(null, null);
@@ -353,14 +364,67 @@ function render() {
   renderCondition(step, previous);
   $('output').textContent = step.console ?? step.output;
   const consumed = Math.max(0, step.inputConsumed || 0);
-  $('input-progress').hidden = !input.value;
+  $('input-progress').hidden = $('input-mode').value === 'manual' || !input.value;
   const readInput = new TextDecoder().decode(new TextEncoder().encode(input.value).slice(0, consumed));
   $('input-progress').textContent = 'Letto finora: ' + (readInput ? readInput.slice(0, 200).replaceAll('\n', ' ↵ ') : 'nessun dato');
   $('step-description').replaceChildren(element('span', '↳', 'step-marker'), element('p', describe(step)));
   renderMemory(memory, frozen ? null : previous, frozen, concluded);
   if (mode === 'flow') flowEditor.showTrace(steps, position, $('conditions').checked);
 }
-function seek(index) { pause(); position = Math.max(0, Math.min(steps.length - 1, index)); render(); }
+function seek(index) { resumeAfterInput = false; pause(); position = Math.max(0, Math.min(steps.length - 1, index)); render(); }
+function cancelSession(session) {
+  return fetch('/api/cancel', {method:'POST', keepalive:true, headers:{'Content-Type':'application/json','X-Visualizer-Token':token}, body:JSON.stringify({session})}).catch(() => {});
+}
+function cancelManual() {
+  if (manualSession) cancelSession(manualSession);
+  manualSession = null; resumeAfterInput = false;
+  $('manual-input-form').hidden = true; $('cancel-manual').hidden = true;
+  $('manual-value').disabled = $('submit-manual').disabled = false;
+}
+function syncInputMode() {
+  const manual = $('input-mode').value === 'manual';
+  $('input').hidden = $('prepared-input-label').hidden = manual;
+  $('manual-input-hint').hidden = !manual;
+}
+function renderManual() {
+  const request = manualSession && position === steps.length - 1 ? steps[position]?.inputRequest : null;
+  $('manual-input-form').hidden = !request; $('cancel-manual').hidden = !manualSession;
+  if (!request) return;
+  if (timer) { resumeAfterInput = true; pause(); }
+  $('manual-input-label').textContent = `Valore per ${request.target} (${request.type})`;
+  $('manual-input-error').textContent = request.error;
+  $('manual-input-error').hidden = !request.error;
+  if ($('manual-input-form').dataset.request !== manualSession + ':' + request.number) {
+    $('manual-input-form').dataset.request = manualSession + ':' + request.number;
+    $('manual-value').value = ''; $('manual-value').focus({preventScroll:true});
+    $('manual-input-form').scrollIntoView({block:'nearest'});
+  }
+}
+$('input-mode').addEventListener('change', () => { storage.set('input-mode', $('input-mode').value); syncInputMode(); invalidate(); });
+$('cancel-manual').addEventListener('click', invalidate);
+window.addEventListener('pagehide', cancelManual);
+$('manual-input-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  const request = steps.at(-1)?.inputRequest;
+  if (!manualSession || !request || $('submit-manual').disabled) return;
+  const requestVersion = version, priorLength = steps.length;
+  $('manual-value').disabled = $('submit-manual').disabled = true;
+  try {
+    const response = await fetch('/api/input', {method:'POST', headers:{'Content-Type':'application/json','X-Visualizer-Token':token}, body:JSON.stringify({session:manualSession, request:request.number, value:$('manual-value').value})});
+    const data = await response.json();
+    if (requestVersion !== version) {if(data.session)cancelSession(data.session);return;}
+    if (!response.ok) throw new Error(data.error || 'Impossibile inviare il valore.');
+    steps = data.steps; manualSession = data.session || null; position = Math.min(priorLength, steps.length - 1);
+    $('run-hint').textContent = manualSession ? 'Continua con i passi fino alla prossima lettura.' : `${steps.length} passi pronti da esplorare.`;
+    if (data.error) { $('error').textContent = data.error; $('error').hidden = false; }
+    render();
+    if (resumeAfterInput && !steps[position]?.inputRequest) {resumeAfterInput = false;startPlayback();}
+  } catch (error) {
+    if (requestVersion === version) { $('manual-input-error').textContent = error.message; $('manual-input-error').hidden = false; }
+  } finally {
+    if (requestVersion === version) {$('manual-value').disabled = $('submit-manual').disabled = false;if(!$('manual-input-form').hidden)$('manual-value').focus({preventScroll:true});}
+  }
+});
 code.addEventListener('input', () => { $('examples').value = ''; invalidate(); }); input.addEventListener('input', invalidate);
 code.addEventListener('scroll', () => { $('gutter').scrollTop = code.scrollTop; });
 $('code-view').addEventListener('scroll', () => { $('gutter').scrollTop = $('code-view').scrollTop; });
@@ -372,13 +436,14 @@ code.addEventListener('keydown', event => {
 });
 $('edit').addEventListener('click', () => { invalidate(); code.focus(); });
 $('new').addEventListener('click', () => {
-  $('examples').value = ''; code.value = ''; input.value = ''; invalidate(); code.focus();
+  $('examples').value = ''; code.value = ''; input.value = ''; programName.value = ''; storage.set('program-name', ''); invalidate(); code.focus();
 });
 $('examples').addEventListener('change', () => {
   const example = $('examples').value === '' ? null : examples[Number($('examples').value)];
-  code.value = example?.code ?? ''; input.value = example?.input ?? ''; invalidate(); code.focus();
+  code.value = example?.code ?? ''; input.value = example?.input ?? ''; programName.value = example?.title ?? ''; storage.set('program-name', programName.value); invalidate(); code.focus();
 });
 $('run').addEventListener('click', async () => {
+  cancelManual();
   pause(); const requestVersion = version;
   retainedMemory = null; retainedCalls = null; selectedVariable = null; lastRenderedStep = null; steps = []; position = 0; controls();
   renderMemory({ frames: [], variables: [] }, null);
@@ -393,17 +458,18 @@ $('run').addEventListener('click', async () => {
     const generated = mode === 'flow' ? flowEditor.getSource() : null;
     const source = generated ? generated.code : code.value;
     if (mode === 'flow') flowEditor.setRunning(true);
-    const response = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Visualizer-Token': token }, body: JSON.stringify({ code: source, input: input.value, ...(generated ? {flow: generated.flow} : {}) }) }).catch(() => {
+    const manual = $('input-mode').value === 'manual';
+    const response = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Visualizer-Token': token }, body: JSON.stringify({ code: source, input: manual ? '' : input.value, ...(manual ? {manual:true} : {}), ...(generated ? {flow: generated.flow} : {}) }) }).catch(() => {
       throw new Error('Server locale non raggiungibile. Avvia avvia.command e tieni aperto il terminale, poi ricarica la pagina e riprova. Codice e input sono conservati.');
     });
     const data = await response.json();
-    if (requestVersion !== version) { $('run-hint').textContent = 'Il codice è cambiato: avvia la nuova versione.'; return; }
+    if (requestVersion !== version) { if(data.session)cancelSession(data.session); $('run-hint').textContent = 'Il codice è cambiato: avvia la nuova versione.'; return; }
     if (!response.ok) throw new Error(data.error || 'Impossibile generare la traccia.');
-    steps = data.steps; position = 0;
+    steps = data.steps; position = 0; manualSession = data.session || null;
     code.hidden = true; $('code-view').hidden = false; $('edit').hidden = false;
     $('code-view').replaceChildren(...source.split('\n').map(line => element('span', line || ' ', 'code-line')));
     $('warnings-box').hidden = !data.warnings; $('warnings').textContent = data.warnings || '';
-    $('run-hint').textContent = data.error ? 'Traccia disponibile fino al punto di errore.' : `${steps.length} passi pronti da esplorare.`;
+    $('run-hint').textContent = data.error ? 'Traccia disponibile fino al punto di errore.' : manualSession ? 'Segui i passi: alla lettura inserisci il valore nella console.' : `${steps.length} passi pronti da esplorare.`;
     if (data.error) { $('error').textContent = data.error; $('error').hidden = false; }
     render();
   } catch (error) {
@@ -431,6 +497,7 @@ $('cpp-to-flow').addEventListener('click', async () => {
     if(requestVersion!==version)return;
     if(!response.ok)throw new Error(result.error||'Conversione non riuscita.');
     const document=FlowchartCore.validate(result.document);
+    document.title = programName.value;
     FlowchartCore.generate(document);
     storage.set('flow-input',sourceInput);setMode('flow');flowEditor.replace(document);
     flowEditor.message('C++ importato: il sorgente originale è conservato. Annulla ripristina il diagramma precedente.');
@@ -471,8 +538,27 @@ $('help-toggle').addEventListener('click', () => {
   $('help').hidden = !$('help').hidden; $('help-toggle').setAttribute('aria-expanded', String(!$('help').hidden));
 });
 $('download').addEventListener('click', () => {
-  const link = element('a'); link.href = URL.createObjectURL(new Blob([code.value], { type: 'text/plain;charset=utf-8' }));
-  link.download = 'lezione.cpp'; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  const name = ProgramFiles.filename(programName.value, '.cpp');
+  ProgramFiles.download(code.value, name, 'text/plain');
+  $('source-status').textContent = 'File preparato: ' + name + '. Lo trovi nei download del browser.';
+});
+programName.addEventListener('input', () => {
+  programName.value = programName.value.replace(/[\u0000-\u001f\u007f]/g, '');
+  if (mode === 'flow') flowEditor.setTitle(programName.value);
+  else storage.set('program-name', programName.value);
+});
+$('open-cpp').addEventListener('click', () => $('cpp-file').click());
+$('cpp-file').addEventListener('change', async () => {
+  const file = $('cpp-file').files[0]; if (!file) return;
+  const requestVersion = version;
+  try {
+    const source = await ProgramFiles.readCpp(file);
+    if (requestVersion !== version) throw new Error('Il programma è cambiato durante l’apertura. Ripeti Apri .cpp.');
+    code.value = source; programName.value = ProgramFiles.baseName(file.name); input.value = ''; $('examples').value = '';
+    storage.set('program-name', programName.value); invalidate();
+    $('source-status').textContent = 'Aperto: ' + file.name;
+  } catch (error) { $('error').textContent = 'Apertura non riuscita: ' + error.message; $('error').hidden = false; }
+  finally { $('cpp-file').value = ''; }
 });
 async function initialize() {
   $('run').disabled = true;
@@ -485,6 +571,7 @@ async function initialize() {
     $('examples').value = matching < 0 ? '' : String(matching);
     $('memory-clear').value = storage.get('memory-clear') === 'finish' ? 'finish' : 'next-run';
     $('conditions').checked = storage.get('conditions') === 'true';
+    $('input-mode').value = storage.get('input-mode') === 'manual' ? 'manual' : 'prepared'; syncInputMode();
     const speed = storage.get('speed'); $('speed').value = ['0.25','0.5','1','2','4'].includes(speed) ? speed : '1';
     if (storage.get('large') === 'true') { document.body.classList.add('large'); $('projection').setAttribute('aria-pressed', 'true'); }
     setMode(storage.get('mode') === 'flow' ? 'flow' : 'cpp', true);

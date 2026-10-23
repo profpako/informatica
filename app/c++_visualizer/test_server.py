@@ -40,7 +40,7 @@ class ServerTests(unittest.TestCase):
         status, body, _ = self.request('GET', '/api/config')
         self.assertEqual(status, 200)
         self.assertEqual(len(json.loads(body)['examples']), 6)
-        for path in ['/flowchart-core.js', '/flowchart-editor.js', '/flowchart.css']:
+        for path in ['/flowchart-core.js', '/flowchart-editor.js', '/flowchart.css', '/program-files.js']:
             self.assertEqual(self.request('GET', path)[0], 200)
         for path in ['/engine.py', '/runtime.hpp', '/../README.md']:
             self.assertEqual(self.request('GET', path)[0], 404)
@@ -86,6 +86,22 @@ class ServerTests(unittest.TestCase):
         convert.side_effect=CodeError('Riga 4: switch non importabile.')
         status, response, _=self.request('POST','/api/import-flowchart',body,headers)
         self.assertEqual(status,400);self.assertIn('Riga 4',json.loads(response)['error'])
+
+    @patch('server.interactive.start')
+    @patch('server.interactive.answer')
+    @patch('server.interactive.cancel')
+    def test_manual_session_routes_require_authentication(self, cancel, answer, start):
+        headers = {'Origin': self.origin, 'X-Visualizer-Token': TOKEN, 'Content-Type': 'application/json'}
+        for path in ['/api/input', '/api/cancel']:
+            self.assertEqual(self.request('POST', path, '{}')[0], 403)
+        start.return_value = {'steps': [], 'error': '', 'session': 'session-test'}
+        self.assertEqual(self.request('POST', '/api/run', json.dumps({'code':'int main(){}','manual':True}), headers)[0], 200)
+        start.assert_called_once_with('int main(){}', None)
+        answer.return_value = {'steps': [], 'error':'', 'session':None}
+        self.assertEqual(self.request('POST', '/api/input', json.dumps({'session':'session-test','request':1,'value':'4'}), headers)[0], 200)
+        answer.assert_called_once_with('session-test', 1, '4')
+        self.assertEqual(self.request('POST', '/api/cancel', json.dumps({'session':'session-test'}), headers)[0], 200)
+        cancel.assert_called_once_with('session-test')
 
 
 if __name__ == '__main__':
