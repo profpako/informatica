@@ -1002,3 +1002,10 @@ sono stati ritrovati sul nuovo percorso grazie al prefisso storage invariato.
 Controllo finale della cache: incluso lo script di build nel fingerprint.
 Non provati PC scolastici o browser diversi da Chrome; input manuale WASM
 ancora basato su replay deterministico, come documentato nel README Pages.
+
+### Sottotitolo Laboratorio di programmazione
+
+- [x] Sostituire il sottotitolo nell'HTML condiviso fra locale e online.
+- [x] Verificare il testo; pubblicazione affidata alla pipeline automatica su main.
+
+Controllo puntuale del testo e diff; nessuna modifica alla logica.
