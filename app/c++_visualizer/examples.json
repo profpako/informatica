@@ -1,0 +1,32 @@
+[
+  {
+    "title": "Valore e riferimento",
+    "input": "",
+    "code": "#include <iostream>\nusing namespace std;\n\nvoid scambioErrato(int a, int b);\nvoid scambioCorretto(int &a, int &b);\n\nint main() {\n    int x = 5, y = 10;\n    scambioErrato(x, y);\n    cout << \"Dopo il passaggio per valore: \"\n         << x << \" \" << y << endl;\n    scambioCorretto(x, y);\n    cout << \"Dopo il passaggio per riferimento: \"\n         << x << \" \" << y << endl;\n    return 0;\n}\n\nvoid scambioErrato(int a, int b) {\n    int temp = a;\n    a = b;\n    b = temp;\n}\n\nvoid scambioCorretto(int &a, int &b) {\n    int temp = a;\n    a = b;\n    b = temp;\n}\n"
+  },
+  {
+    "title": "Array e funzioni",
+    "input": "",
+    "code": "#include <iostream>\nusing namespace std;\n\nint sommaArray(const int arr[], int dimensione) {\n    int somma = 0;\n    for (int i = 0; i < dimensione; i++) {\n        somma += arr[i];\n    }\n    return somma;\n}\n\nvoid raddoppiaElementi(int arr[], int dimensione) {\n    for (int i = 0; i < dimensione; i++) {\n        arr[i] *= 2;\n    }\n}\n\nint main() {\n    int numeri[] = {1, 2, 3, 4, 5};\n    int dimensione = sizeof(numeri) / sizeof(numeri[0]);\n    cout << \"Somma: \" << sommaArray(numeri, dimensione) << endl;\n    raddoppiaElementi(numeri, dimensione);\n    for (int i = 0; i < dimensione; i++) {\n        cout << numeri[i] << \" \";\n    }\n    return 0;\n}\n"
+  },
+  {
+    "title": "Dichiarazione e input",
+    "input": "17\nMario Rossi\n",
+    "code": "#include <iostream>\n#include <string>\nusing namespace std;\n\nint main() {\n    int eta;\n    string nome;\n    cout << \"Inserisci l'eta: \";\n    cin >> eta;\n    cin.ignore();\n    cout << \"Inserisci nome e cognome: \";\n    getline(cin, nome);\n    cout << nome << \" ha \" << eta << \" anni.\" << endl;\n    return 0;\n}\n"
+  },
+  {
+    "title": "Globali e locali",
+    "input": "",
+    "code": "#include <iostream>\nusing namespace std;\n\nint contatore = 0;\n\nvoid incrementaContatore() {\n    int incremento = 1;\n    contatore += incremento;\n}\n\nint main() {\n    incrementaContatore();\n    incrementaContatore();\n    int contatore = 100;\n    cout << \"Locale: \" << contatore << endl;\n    cout << \"Globale: \" << ::contatore << endl;\n    return 0;\n}\n"
+  },
+  {
+    "title": "Chiamate ricorsive",
+    "input": "",
+    "code": "#include <iostream>\nusing namespace std;\n\nint fattoriale(int n) {\n    if (n <= 1) {\n        return 1;\n    }\n    int risultato = n * fattoriale(n - 1);\n    return risultato;\n}\n\nint main() {\n    int numero = 4;\n    int risultato = fattoriale(numero);\n    cout << \"Fattoriale: \" << risultato << endl;\n    return 0;\n}\n"
+  },
+  {
+    "title": "Puntatori e celle",
+    "input": "",
+    "code": "#include <iostream>\nusing namespace std;\n\nvoid incrementa(int *p) {\n    *p = *p + 1;\n}\n\nint main() {\n    int numero = 10;\n    int voti[3] = {6, 7, 8};\n    int *p = &numero;\n    incrementa(p);\n    p = &voti[1];\n    incrementa(p);\n    cout << \"Numero: \" << numero << endl;\n    cout << \"Secondo voto: \" << voti[1] << endl;\n    return 0;\n}\n"
+  }
+]

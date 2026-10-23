@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Dentro il codice — Laboratorio C++</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/flowchart.css">
+  <script src="/flowchart-core.js" defer></script>
+  <script src="/flowchart-editor.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="identity"><span class="brand" aria-hidden="true">{ }</span><div><h1>Dentro il codice</h1><p>Laboratorio di memoria C++</p></div></div>
+    <div class="top-actions"><span class="local"><span aria-hidden="true">●</span> Sul tuo computer</span><button id="projection" type="button" aria-pressed="false">Testo grande</button><button id="help-toggle" type="button" aria-expanded="false" aria-controls="help">Guida</button></div>
+  </header>
+  <aside id="help" hidden>
+    <h2>Dal codice alla memoria</h2>
+    <p>Scrivi un programma C++ o carica un esempio. Inserisci gli eventuali dati di <code>cin</code>, poi scegli <strong>Visualizza esecuzione</strong>. Usa i passi per osservare una dichiarazione, entrare in una funzione e seguirne il ritorno.</p>
+    <p><strong>Riferimento:</strong> un altro nome della stessa variabile. <strong>Per valore:</strong> una copia con un indirizzo diverso. Le destinazioni dei collegamenti sono cliccabili. <strong>?</strong> indica una cella non inizializzata.</p>
+    <p>Seleziona il nome di una variabile per vedere i collegamenti. La freccia tratteggiata indica una copia del valore o dell'indirizzo al momento della chiamata; il tratto continuo indica un alias o la destinazione attuale di un puntatore. All'ingresso nella funzione viene selezionato il primo parametro. <strong>Chiamate concluse</strong> conserva una fotografia grigia per ciascuna chiamata, separata dalla memoria attiva e richiudibile. L'elenco segue l'ordine di conclusione; chiamate ripetute e ricorsive hanno numeri distinti.</p>
+    <p><strong>Colori delle variabili:</strong> il software riconosce automaticamente Input (blu), Output (verde), Input/Output (viola) e Lavoro (ocra). Per le variabili osserva letture da console, stampe e ritorni; per i parametri verifica se il valore in ingresso viene letto e se la funzione può modificare la memoria del chiamante. L'analisi considera anche i rami non eseguiti e mantiene il colore durante tutti i passi. Il nome del ruolo è disponibile passando il mouse sulla variabile.</p>
+    <p><strong>Mostra condizioni:</strong> attiva il flag accanto a Indirizzi per vedere espressione, valori realmente letti, esito e percorso del controllo. Verde indica VERA, rosso FALSA; break e continue hanno una spiegazione distinta. Nel passo successivo è evidenziata la riga raggiunta. La scelta è ricordata nel browser e può cambiare senza rieseguire il programma.</p>
+    <p>Questa versione visualizza programmi brevi con tipi semplici, stringhe, array monodimensionali, funzioni e riferimenti. Matrici, struct, file e memoria dinamica sono estensioni successive. Gli indirizzi reali possono cambiare a ogni avvio.</p>
+  </aside>
+  <main>
+    <section class="workspace" aria-labelledby="code-title">
+      <div class="panel-heading"><div><h2 id="code-title">Il programma</h2><span id="program-language">C++17</span></div><label id="cpp-examples" class="example-label">Esempio (facoltativo) <select id="examples"><option value="">Nessun esempio</option></select></label></div>
+      <div class="source-modes" role="group" aria-label="Modalità di scrittura"><button id="mode-cpp" type="button" aria-pressed="true">C++</button><button id="mode-flow" type="button" aria-pressed="false">Flowchart</button></div>
+      <div id="cpp-pane">
+      <div class="editor" id="editor-shell"><div id="gutter" aria-hidden="true"></div><textarea id="code" aria-label="Codice C++" placeholder="Scrivi qui il tuo programma C++…" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea><pre id="code-view" aria-label="Codice in esecuzione" tabindex="0" hidden></pre></div>
+      <div class="editor-footer"><span id="source-status">Codice modificabile</span><div><button id="new" type="button">Nuovo programma</button><button id="edit" type="button" hidden>Modifica codice</button><button id="download" type="button">Scarica .cpp</button></div></div>
+      </div>
+      <div id="flow-pane" hidden></div>
+      <label class="input-label" for="input">Input del programma <span>Separa i valori con spazi o INVIO. La console mostra i dati letti da ogni istruzione cin, seguiti da INVIO.</span></label>
+      <textarea id="input" rows="2" spellcheck="false" placeholder="5&#10;10"></textarea>
+      <p id="input-progress" hidden></p>
+      <div class="run-area"><button id="run" class="primary" type="button"><span aria-hidden="true">▶</span> Visualizza esecuzione</button><p id="run-hint">Scrivi, esegui, osserva.</p></div>
+      <div id="error" class="error" role="alert" hidden></div>
+      <details id="warnings-box" hidden><summary>Indicazioni del compilatore</summary><pre id="warnings"></pre></details>
+    </section>
+    <section class="observation" aria-labelledby="memory-title">
+      <div class="panel-heading"><div><h2 id="memory-title">Cosa succede in memoria</h2><span id="memory-caption">Seleziona un nome per osservare i collegamenti</span></div><div class="observation-options"><label class="address-control"><input id="addresses" type="checkbox"> Indirizzi</label><label class="address-control"><input id="conditions" type="checkbox"> Mostra condizioni</label></div></div>
+      <div class="transport" aria-label="Controlli di esecuzione">
+        <div class="transport-buttons"><button id="first" type="button" title="Primo passo" aria-label="Primo passo" disabled>⏮</button><button id="prev" type="button" disabled>← Indietro</button><button id="play" type="button" aria-label="Riproduci automaticamente" disabled>▶</button><button id="next" class="next" type="button" disabled>Avanti →</button><button id="last" type="button" title="Ultimo passo" aria-label="Ultimo passo" disabled>⏭</button></div>
+        <span id="counter">Nessuna esecuzione</span>
+        <input id="timeline" type="range" min="0" max="0" value="0" aria-label="Passo di esecuzione" disabled>
+      </div>
+      <div id="step-description" class="step-description" role="status" aria-live="polite"><span class="step-marker" aria-hidden="true">↳</span><p>Avvia il programma per vedere variabili e chiamate.</p></div>
+      <section id="condition-panel" class="condition-panel" aria-label="Controllo della condizione" aria-live="polite" tabindex="0" hidden></section>
+      <div class="memory-options"><label for="memory-clear">Svuota memoria <select id="memory-clear"><option value="next-run">All'avvio della prossima esecuzione</option><option value="finish">Alla fine del programma</option></select></label><p id="memory-state" role="status" hidden>Esecuzione terminata: fotografia della memoria, le variabili non sono più allocate.</p></div>
+      <section id="call-links" class="call-links" aria-label="Collegamenti del passaggio dei parametri" aria-live="polite" tabindex="0" hidden></section>
+      <div class="memory-area">
+        <aside class="callstack"><h3>Pila delle chiamate</h3><ol id="stack"><li class="placeholder">Le funzioni compariranno qui.</li></ol><p id="stack-note" class="stack-note">La chiamata attiva è in alto.</p></aside>
+        <div id="memory"><div class="empty-state"><div class="empty-diagram" aria-hidden="true"><span>nome</span><strong>valore</strong><span>indirizzo</span></div><h3>Una finestra sulle variabili</h3><p>Segui le copie dei parametri, gli alias dei riferimenti e le celle degli array, un passo alla volta.</p></div></div>
+      </div>
+      <details id="completed-calls" class="last-call" hidden><summary id="completed-calls-title">Chiamate concluse (0)</summary><p class="archive-note">Fotografie dell'ultimo stato di ciascuna chiamata, in ordine di conclusione. I locali automatici non sono più attivi; gli alias sono conclusi. I dati del chiamante e le variabili globali/statiche mantengono la propria durata.</p><div id="completed-calls-list" tabindex="0" aria-label="Fotografie delle chiamate concluse"></div></details>
+      <section class="console" aria-labelledby="console-title"><div class="console-heading"><h3 id="console-title">Console</h3><span id="console-status">Input e output del passo corrente</span></div><pre id="output" aria-label="Console del programma"></pre></section>
+      <div class="legend"><span><i class="legend-change" aria-hidden="true"></i> Valore cambiato</span><span><strong>?</strong> Non inizializzato</span><span><strong>⇢</strong> Copia alla chiamata</span><span><strong>↗</strong> Alias o puntatore</span></div>
+      <div class="role-legend" aria-label="Colori automatici delle variabili"><span data-role="input">Input</span><span data-role="output">Output</span><span data-role="inout">Input/Output</span><span data-role="work">Lavoro</span></div>
+    </section>
+  </main>
+  <footer class="page-footer">Informatica SIA <span>Il codice viene eseguito localmente. Nessun account richiesto.</span></footer>
+</body>
+</html>
