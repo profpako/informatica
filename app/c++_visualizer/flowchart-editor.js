@@ -28,8 +28,8 @@ const FlowchartEditor = (() => {
     const drawing = svg('svg', {viewBox:'-32 -2 64 36',width:44,height:26,'aria-hidden':'true',class:'flow-icon '+shape});
     drawing.append(contour(shape,56,30));
     if (shape === 'call') drawing.append(svg('path',{d:'M -23 0 V 30 M 23 0 V 30'}));
-    const label = svg('text', {x:0,y:19,'text-anchor':'middle'});
-    label.textContent = ({declare:'x',input:'IN',output:'OUT',assign:'=',if:'?',while:'↻',for:'i',do:'↻',call:'f()',return:'↵',break:'↗',continue:'↶'})[kind];
+    const label = svg('text', shape === 'io' ? {x:23,y:10,'text-anchor':'end',class:'flow-io-tag'} : {x:0,y:19,'text-anchor':'middle'});
+    label.textContent = ({declare:'x',input:'I',output:'O',assign:'=',if:'?',while:'↻',for:'i',do:'↻',call:'f()',return:'↵',break:'↗',continue:'↶'})[kind];
     drawing.append(label); return drawing;
   }
   return class {
@@ -431,6 +431,10 @@ const FlowchartEditor = (() => {
         const group=svg('g',{transform:`translate(${node.x} ${node.y})`,'class':'flow-node '+node.shape,'data-node':node.id,'data-owner':node.owner});
         if(node.shape!=='for'){const title=svg('title');title.textContent=node.text;group.append(title);}
         group.append(contour(node.shape,node.width,node.height));
+        if (node.badge) {
+          const badge = svg('text', {x:node.badge.x,y:node.badge.y,'text-anchor':'end',class:'flow-io-tag','aria-hidden':'true'});
+          badge.textContent = node.badge.text; group.append(badge);
+        }
         if(node.shape==='call'){group.append(svg('path',{d:`M -108 0 L -108 ${node.height} M 108 0 L 108 ${node.height}`,'class':'call-bars'}));}
         const lines=C.visualLines(node.text,node.shape);
         if(node.shape==='for') {
@@ -446,7 +450,7 @@ const FlowchartEditor = (() => {
             text.append(span);
           });group.append(text);
         } else if(node.shape!=='join') {
-          const text=svg('text',{'text-anchor':'middle',y:node.height/2-(lines.length-1)*8+4});
+          const text=svg('text',{'text-anchor':'middle',y:node.height/2-(lines.length-1)*8+4+(node.badge?6:0)});
           lines.forEach((line,index)=>{const span=svg('tspan',{x:0,dy:index?16:0});span.textContent=line.trim();text.append(span);});group.append(text);
         }
         if(C.locate(this.document,node.owner)) {

@@ -59,6 +59,12 @@ La sintassi dei campi segue le convenzioni concordate, simili ad AlgoBuild:
   Usare Chiamata per gli argomenti e l'eventuale destinazione del risultato;
   una destinazione scalare nuova ricava il tipo restituito. Restituisci indica il ritorno.
 
+Nel diagramma i parallelogrammi riportano nell'angolo in alto a destra **I** per
+l'input, **O** per OUT e **OLN** per OUTLN. Al centro restano soltanto variabili
+ed espressioni. Con una sola riga il blocco è più basso; con più righe l'altezza si
+adatta al testo. Le sigle sono presenti anche nel PNG esportato. I campi dell'editor
+continuano a usare i nomi Input, OUT e OUTLN.
+
 Nei diagrammi costruiti con i blocchi ogni variabile appartiene alla propria subroutine: se creata dentro
 un ramo o un ciclo rimane disponibile fino alla conclusione della chiamata. Un
 ramo non percorso non crea le sue variabili. Il tipo resta stabile; assegnazioni
@@ -75,7 +81,9 @@ diagramma e al ritorno si torna al chiamante. **Modifica diagramma** riapre i ca
 La freccia appena percorsa è evidenziata in blu anche con Mostra condizioni spento;
 i raccordi attraversati sono evidenziati insieme. **Velocità** regola la riproduzione
 da 0,25× (4 secondi per passo) a 4× (0,25 secondi per passo), anche durante l'animazione.
-La scelta è ricordata e vale anche per il codice C++.
+La scelta è ricordata e vale anche per il codice C++. Il numero del passo corrente
+compare anche direttamente sulla barra, sopra il cursore: segue l’avanzamento,
+l’animazione e lo spostamento manuale senza uscire dai bordi.
 
 **Salva diagramma** esporta il documento `.flow.json`; **Apri diagramma** lo
 ripristina. Nuovo diagramma ed Esempio area sono annullabili. Il diagramma è

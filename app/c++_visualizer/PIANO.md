@@ -755,3 +755,45 @@ Verifiche:
 - Server abituale riavviato, PID 40689 sulla porta 8765. API risoluzione + esecuzione
   provate con array e FOR: solo iostream, int i, nessun return automatico e output 2 6.
   Server temporaneo 18780 fermato; controlli Node/sintassi/diff superati.
+
+## Sigle nei parallelogrammi di input/output
+
+- [x] Spostare la sigla del blocco dall'area centrale all'angolo superiore destro.
+  - [x] Input: I; output OUT: O; output OUTLN: OLN.
+  - [x] Lasciare al centro soltanto variabili/espressioni, anche multilinea.
+  - [x] Mantenere spazio fra sigla, testo e lati inclinati.
+- [x] Applicare la stessa convenzione alle miniature dei menu.
+- [x] Verificare resa normale, Testo grande, selezione/esecuzione ed esportazione PNG.
+- [x] Aggiornare guida e verifiche, senza cambiare sintassi dei campi o C++ generato.
+
+Ambito: presentazione SVG, misure dei blocchi input/output, miniature e documentazione.
+I nomi accessibili restano descrittivi; nel modello OUT/OUTLN conservano il significato
+attuale. Nessuna modifica al runtime, alla console o ai documenti salvati.
+
+### Numero sulla barra dei passi
+
+- [x] Mostrare il numero del passo corrente vicino al cursore della barra.
+- [x] Aggiornarlo con avanzamento, animazione e trascinamento, senza uscire dai bordi.
+- [x] Mantenere il contatore Passo n di m e un nome accessibile del valore corrente.
+
+Richiesta aggiuntiva: ridurre l'altezza dei parallelogrammi con una sola riga.
+- [x] Usare una misura compatta per una riga, mantenendo la sigla separata.
+- [x] Conservare l'altezza adattabile per contenuti multilinea e verificare il PNG.
+
+
+Verifiche della revisione:
+- Suite Node Flowchart superata: corpo privo della vecchia etichetta, sigle I/O/OLN,
+  distanza da testo e bordo inclinato, altezza compatta per una riga e adattabile
+  per righe multiple. Generazione C++ identica prima/dopo il layout.
+- Chrome: sigle O/I/OLN, altezza di 54 px per una riga e 72 px per due righe;
+  distanza misurata fra sigla e contenuto 6,5/7,5 px, maggiore in Testo grande.
+- Esecuzione con input 7: console «Numero: 7\nDoppio: 14\n». Clic sul parallelogramma
+  Input evidenzia ancora cin >> n nel C++ generato.
+- Numero sulla barra: 1 al primo passo, 2 dopo Freccia destra, 12 all'ultimo;
+  valore accessibile uguale a Passo n di m. Etichetta interna ai bordi a inizio/fine,
+  anche ingrandita; aggiornamento verificato con l'animazione a 4×.
+- PNG scaricato e ispezionato: flowchart-sigle-io.png. Anteprima completa della
+  schermata e barra numerata: flowchart-sigle-e-passi.png.
+- Suite Node file con nome, controlli sintattici JS e git diff --check superati.
+  Non ripetuta l'intera suite C++: nessuna modifica al generatore o al runtime.
+  Gli asset sono letti dal disco dal server abituale; basta ricaricare la pagina.

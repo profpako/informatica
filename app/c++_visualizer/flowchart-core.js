@@ -335,10 +335,11 @@ const FlowchartCore = (() => {
   ];
   const visualLines = (text, shape) => shape === 'for'
     ? [text]
-    : blockLines(text, shape === 'decision' ? 20 : 28, shape === 'decision' ? 3 : 6);
+    : blockLines(shape === 'io' ? text.split('\n').slice(1).join('\n') : text, shape === 'decision' ? 20 : shape === 'io' ? 24 : 28, shape === 'decision' ? 3 : 6);
   function dimensions(shape, text) {
     return { width: shape === 'join' ? 12 : shape === 'for' ? Math.max(320, text.length * 8 + 80) : 240,
       height: shape === 'join' ? 12 : shape === 'decision' ? 90
+        : shape === 'io' ? visualLines(text, shape).length === 1 ? 54 : visualLines(text, shape).length * 16 + 40
         : Math.max(shape === 'terminal' ? 44 : 62, visualLines(text, shape).length * 16 + (shape === 'terminal' ? 20 : 28)) };
   }
   function insertAt(document, position, kind) {
@@ -392,6 +393,7 @@ const FlowchartCore = (() => {
     const total = measure(fn.body), center = total.width / 2 + 35;
     const addNode = (nodeId, x, y, shape, text_, owner = nodeId) => {
       const n = { id: nodeId, owner, x, y, ...dimensions(shape, text_), shape, text: text_ };
+      if (shape === 'io') n.badge = {text:({INPUT:'I', OUT:'O', OUTLN:'OLN'})[text_.split('\n')[0]], x:n.width/2-12, y:16};
       nodes.push(n); return n;
     };
     const edge = (from, to, points, owner = null, outcome = null, text_ = '', insertion = null, arrow = null) => edges.push({ from, to, points, owner, outcome, text: text_, insertion, arrow });

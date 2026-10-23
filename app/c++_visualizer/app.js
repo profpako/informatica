@@ -73,6 +73,11 @@ function controls() {
   $('timeline').max = Math.max(0, steps.length - 1);
   $('timeline').value = position;
   $('counter').textContent = absent ? 'Nessuna esecuzione' : `Passo ${position + 1} di ${steps.length}`;
+  $('timeline').setAttribute('aria-valuetext', $('counter').textContent);
+  $('timeline-number').hidden = absent;
+  $('timeline-number').value = position + 1;
+  const fraction = steps.length > 1 ? position / (steps.length - 1) : 0;
+  $('timeline-number').style.left = `clamp(22px, calc(${fraction * 100}% + ${8 - 16 * fraction}px), calc(100% - 22px))`;
 }
 function invalidate() {
   cancelManual();

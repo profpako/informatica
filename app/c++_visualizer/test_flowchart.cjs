@@ -84,6 +84,26 @@ assert.match(C.generate(arrayDoc).code,/int v\[N\] = \{1,2,3\};/);
 const graphical=C.layout(automatic,'main');
 assert.ok(graphical.nodes.some(n=>n.shape==='io'&&n.height>62));
 assert.deepEqual(C.blockLines('INPUT\nint base\nint altezza'),['INPUT','int base','int altezza']);
+const ioDocument=C.blank();
+ioDocument.functions[0].body=[make('input',{target:'int base\nint altezza'}),make('output',{expression:'"Base: "\nbase',ending:'OUT'}),make('output',{expression:'"Testo lungo da mostrare nel parallelogramma senza sovrapporre la sigla"'})];
+const ioCode=C.generate(ioDocument).code, ioNodes=C.layout(ioDocument,'main').nodes.filter(node=>node.shape==='io');
+assert.deepEqual(ioNodes.map(node=>node.badge.text),['I','O','OLN']);
+assert.deepEqual(C.visualLines(ioNodes[0].text,'io'),['int base','int altezza']);
+assert.deepEqual(C.visualLines(ioNodes[1].text,'io'),['"Base: "','base']);
+for(const node of ioNodes) {
+  const lines=C.visualLines(node.text,'io'), firstBaseline=node.height/2-(lines.length-1)*8+10;
+  const rightSide=node.width/2-node.width*.075*node.badge.y/node.height;
+  assert.ok(node.badge.x<rightSide-5);
+  assert.ok(firstBaseline-13>node.badge.y+5);
+  assert.ok(firstBaseline+(lines.length-1)*16<node.height-10);
+  assert.ok(lines.every(line=>!['INPUT','OUT','OUTLN'].includes(line)));
+}
+assert.equal(C.generate(ioDocument).code,ioCode);
+const compactIo=C.blank();compactIo.functions[0].body=[make('input',{target:'n'}),make('output',{expression:'n',ending:'OUT'}),make('output',{expression:'n'})];
+const compactNodes=C.layout(compactIo,'main').nodes.filter(node=>node.shape==='io');
+assert.ok(compactNodes.every(node=>node.height<62));
+assert.ok(ioNodes[0].height>compactNodes[0].height);
+for(const node of compactNodes)assert.ok(node.height/2+10-13>node.badge.y+5);
 const insertDoc=C.blank(), entryEdge=C.layout(insertDoc,'main').edges[0];
 assert.equal(C.layout(insertDoc,'main').nodes[0].text,'INIZIO main()');
 assert.equal(C.layout(insertDoc,'main').nodes.at(-1).text,'FINE main()');
