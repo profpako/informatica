@@ -39,7 +39,8 @@ preparati compaiono subito sotto quando questa modalità è selezionata. Su fine
 strette i gruppi si dispongono su più righe senza sovrapporsi.
 
 I raccordi dei percorsi sono linee continue: non mostrano cerchietti né punte di
-freccia intermedie. I **+** restano disponibili per inserire blocchi. L'evidenziazione
+freccia intermedie. I **+** restano sulla linea; i tratti consecutivi che
+inseriscono nello stesso punto hanno un unico **+**. L'evidenziazione
 del percorso attraversa anche i raccordi senza interrompere la linea.
 
 La sintassi dei campi segue le convenzioni concordate, simili ad AlgoBuild:

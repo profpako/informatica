@@ -900,3 +900,23 @@ Verifiche conclusive della revisione:
 Il server abituale serve gli asset aggiornati dal disco; per vedere tutte le
 correzioni occorre ricaricare la pagina. Pubblicazione sul ramo main richiesta
 nelle istruzioni del docente, dopo le verifiche.
+
+### Freccia unica sul percorso del ciclo (ulteriore segnalazione)
+
+- [x] Unire nella presentazione i collegamenti separati solo da un raccordo tecnico senza diramazioni.
+- [x] Mostrare un solo + quando i due tratti inseriscono nella stessa posizione.
+- [x] Mantenere il + sulla linea, come richiesto dopo la prova con i + a lato.
+- [x] Conservare punte, inserimento, evidenziazione del percorso ed esportazione PNG.
+- [x] Verificare FOR vuoto/popolato e raccordi con diramazioni; controllare il risultato nel browser.
+
+La precedente correzione nascondeva il cerchio del raccordo, ma lasciava due
+collegamenti distinti sullo stesso percorso del FOR vuoto. La correzione deve
+unire il percorso disegnato, conservando il grafo usato per esecuzione e traccia.
+
+Verifiche: test Node Flowchart e file con nome superati, sintassi editor e diff
+controllati. Nel browser, FOR vuoto con una sola linea SVG, una punta e un solo +
+per Vero e Falso. Provato inserimento di un assegnamento dal + unico e Annulla.
+Esecuzione nativa terminata con output 10; evidenziazione integrale sia del ritorno
+Vero sia dell’uscita Falso, anche con condizioni nascoste. PNG esportato e
+ispezionato. Schermata finale: flowchart-freccia-unica.png. I + sono stati
+rimessi sulla linea su richiesta del docente. Non ripetuta la suite C++ completa.

@@ -369,6 +369,23 @@ const FlowchartCore = (() => {
     }
     return [];
   }
+  function drawingGraph(graph) {
+    let edges=graph.edges.map((edge,index)=>({...edge,indices:[index],heads:edge.head?[edge.head]:[],endArrow:edge.endArrow&&!edge.head}));
+    const hidden=new Set();
+    for(const node of graph.nodes) {
+      if(node.shape!=='join')continue;
+      const incoming=edges.filter(edge=>edge.to===node.id), outgoing=edges.filter(edge=>edge.from===node.id);
+      if(incoming.length!==1||outgoing.length!==1||incoming[0]===outgoing[0])continue;
+      const a=incoming[0], b=outgoing[0];
+      // Distinct insertion positions must remain available on either side of a merge.
+      if(JSON.stringify(a.insertion)!==JSON.stringify(b.insertion))continue;
+      edges=edges.filter(edge=>edge!==a&&edge!==b);
+      edges.push({...a,to:b.to,points:a.points.concat(b.points),indices:a.indices.concat(b.indices),
+        heads:a.heads.concat(b.heads),endArrow:b.endArrow});
+      hidden.add(node.id);
+    }
+    return {...graph,nodes:graph.nodes.filter(node=>!hidden.has(node.id)),edges};
+  }
   function layout(document, functionId) {
     validate(document);
     const fn = document.functions.find(f => f.id === functionId) || document.functions[0];
@@ -480,6 +497,6 @@ const FlowchartCore = (() => {
       make('output', { expression: '"Area: "\narea' })];
     return doc;
   }
-  return { types, kinds, blank, newNode, id, FlowError, validate, generate, label, forParts, blockLines, shapeFor, visualLines, insertAt, pathBetween, layout, locate, example };
+  return { types, kinds, blank, newNode, id, FlowError, validate, generate, label, forParts, blockLines, shapeFor, visualLines, insertAt, pathBetween, drawingGraph, layout, locate, example };
 })();
 if (typeof module !== 'undefined') module.exports = FlowchartCore;

@@ -193,10 +193,32 @@ assert.equal(routingGraph.edges.find(edge=>edge.from===forEmpty.id&&edge.outcome
 assert.equal(routingGraph.edges.find(edge=>edge.from===forEmpty.id+':body').endArrow,true);
 assert.equal(routingGraph.edges.find(edge=>edge.from===forEmpty.id+':exit').endArrow,true);
 for(const edge of routingGraph.edges)assert.equal(edge.endArrow,routingGraph.nodes.find(node=>node.id===edge.to).shape!=='join');
+const routingBefore=JSON.stringify(routingGraph), drawnRouting=C.drawingGraph(routingGraph);
+const trueRoute=drawnRouting.edges.filter(edge=>edge.from===forEmpty.id&&edge.outcome==='true');
+const falseRoute=drawnRouting.edges.filter(edge=>edge.from===forEmpty.id&&edge.outcome==='false');
+assert.equal(trueRoute.length,1);assert.equal(falseRoute.length,1);
+assert.equal(trueRoute[0].to,forEmpty.id);assert.equal(falseRoute[0].to,'main:end');
+for(const edge of [trueRoute[0],falseRoute[0]]) {
+  assert.equal(edge.indices.length,2);assert.equal(edge.endArrow,true);assert.deepEqual(edge.heads,[]);
+  assert.deepEqual(edge.indices,C.pathBetween(routingGraph,edge.from,edge.to,edge.outcome));
+}
+assert.equal(drawnRouting.nodes.some(node=>node.shape==='join'),false);
+assert.deepEqual(drawnRouting.edges.flatMap(edge=>edge.indices).sort((a,b)=>a-b),routingGraph.edges.map((_,index)=>index));
+assert.equal(JSON.stringify(routingGraph),routingBefore);
+const differentPositions=JSON.parse(routingBefore);
+differentPositions.edges.find(edge=>edge.from===forEmpty.id+':body').insertion.index=1;
+assert.ok(C.drawingGraph(differentPositions).nodes.some(node=>node.id===forEmpty.id+':body'));
+assert.ok(C.drawingGraph(emptyChoiceGraph).nodes.some(node=>node.id===emptyIf.id+':merge'));
+const drawnWhile=C.drawingGraph(C.layout(emptyCycle,'main'));
+const whileRoute=drawnWhile.edges.find(edge=>edge.from===cycle.id&&edge.outcome==='true');
+assert.equal(whileRoute.to,cycle.id);assert.equal(whileRoute.heads.length,1);assert.equal(whileRoute.endArrow,true);
 forEmpty.body=[make('assign',{expression:'n = 1'})];
 const populatedRouting=C.layout(forRouting,'main');
 assert.equal(populatedRouting.edges.find(edge=>edge.from===forEmpty.id&&edge.outcome==='true').endArrow,true);
 assert.equal(populatedRouting.edges.find(edge=>edge.from===forEmpty.id&&edge.outcome==='false').endArrow,false);
+const drawnPopulated=C.drawingGraph(populatedRouting);
+assert.equal(drawnPopulated.edges.find(edge=>edge.from===forEmpty.id&&edge.outcome==='true').to,forEmpty.body[0].id);
+assert.equal(drawnPopulated.edges.find(edge=>edge.from===forEmpty.id&&edge.outcome==='false').to,'main:end');
 assert.equal(C.pathBetween(C.layout(emptyCycle,'main'),cycle.id,cycle.id,true).length,2);
 const fnGraph=C.layout(example,example.functions[1].id);
 assert.equal(fnGraph.nodes[0].text,'INIZIO calcolaArea()');assert.equal(fnGraph.nodes.at(-1).text,'FINE calcolaArea()');

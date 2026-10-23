@@ -422,18 +422,19 @@ const FlowchartEditor = (() => {
       let graph;
       try { graph=C.layout(this.document,this.fnId); } catch(error) { this.canvas.append(el('p',error.message)); return; }
       this.graph=graph;
+      const visible=C.drawingGraph(graph);
       const scale=document.body.classList.contains('large')?1.2:1;
       const drawing=svg('svg',{viewBox:`0 0 ${graph.width} ${graph.height}`,width:graph.width*scale,height:graph.height*scale,role:'group','aria-label':'Flowchart di '+this.document.functions.find(f=>f.id===this.fnId).name});
       const defs=svg('defs'); const marker=svg('marker',{id:'flow-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'});
       marker.append(svg('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'context-stroke'}));defs.append(marker);drawing.append(defs);
-      for(const [edgeIndex,edge] of graph.edges.entries()) {
+      for(const edge of visible.edges) {
         const group=svg('g',{'class':'flow-edge','data-from':edge.from,'data-to':edge.to});
-        group.dataset.edge=edgeIndex;
+        group.dataset.edges=edge.indices.join(' ');
         if(edge.owner)group.dataset.owner=edge.owner;if(edge.outcome)group.dataset.outcome=edge.outcome;
         const d=edge.points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
         const path=svg('path',{d,class:'flow-edge-line'});
-        if(!edge.head && edge.endArrow)path.setAttribute('marker-end','url(#flow-arrow)');
-        if(edge.head)group.dataset.arrow=edge.arrow;
+        if(edge.endArrow)path.setAttribute('marker-end','url(#flow-arrow)');
+        if(edge.heads.length)group.dataset.arrow=edge.arrow;
         group.append(path);
         if(edge.insertion&&!this.running) {
           const position=edge.insertion;
@@ -451,10 +452,10 @@ const FlowchartEditor = (() => {
           group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();this.openKindMenu(handle,kind=>this.insertNode(position,kind),null,caption);}});
         }
         if(edge.text){const [x,y]=edge.points[Math.min(1,edge.points.length-1)];const text=svg('text',{x:x+7,y:y-8});text.textContent=edge.text.length>35?edge.text.slice(0,32)+'…':edge.text;group.append(text);}
-        if(edge.head)group.append(svg('polygon',{points:edge.head.map(point=>point.join(',')).join(' '),class:'flow-arrowhead','aria-hidden':'true'}));
+        for(const head of edge.heads)group.append(svg('polygon',{points:head.map(point=>point.join(',')).join(' '),class:'flow-arrowhead','aria-hidden':'true'}));
         drawing.append(group);
       }
-      for(const node of graph.nodes) {
+      for(const node of visible.nodes) {
         const group=svg('g',{transform:`translate(${node.x} ${node.y})`,'class':'flow-node '+node.shape,'data-node':node.id,'data-owner':node.owner});
         if(node.shape!=='for'){const title=svg('title');title.textContent=node.text;group.append(title);}
         group.append(contour(node.shape,node.width,node.height));
@@ -538,7 +539,7 @@ const FlowchartEditor = (() => {
       if(!this.traceState)return;
       const {point,condition}=this.traceState;
       if(point.fn===this.fnId)for(const index of this.traceState.route||[]) {
-        this.canvas.querySelector(`[data-edge="${index}"]`)?.classList.add('flow-traversed');
+        this.canvas.querySelector(`[data-edges~="${index}"]`)?.classList.add('flow-traversed');
         const edge = this.graph.edges[index];
         for (const id of [edge.from, edge.to]) {
           const node = this.canvas.querySelector(`[data-node="${id}"]`);
