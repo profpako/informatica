@@ -38,6 +38,12 @@ class FlowchartEngineTests(unittest.TestCase):
         self.assertEqual(param['origin']['kind'], 'address')
         self.assertEqual(result['steps'][-1]['lastCall']['name'], 'incrementa')
 
+    def test_output_without_redundant_parentheses_keeps_precedence(self):
+        generated = self.fixture['outputPrecedence']
+        result = run_program(generated['code'], flow=generated['flow'])
+        self.assertEqual(result['error'], '')
+        self.assertEqual(result['steps'][-1]['output'], 'Risultato 4 8 4 6\n1 8 0 1 9\n5 6 1\n')
+
     def test_decisions_loops_and_control_mapping(self):
         generated = self.fixture['loops']
         result = run_program(generated['code'], flow=generated['flow'])

@@ -41,6 +41,15 @@ try{
     const result=await run(program('int b,h;cout<<"Base: ";cin>>b;cout<<"Altezza: ";cin>>h;cout<<b*h;'),'4 6');
     assert.equal(result.error,'');assert.equal(last(result).console,'Base: 4\nAltezza: 6\n24');
   });
+  await test('Flowchart: cout leggibile e precedenza degli operatori',async()=>{
+    const doc=C.blank(), number=Object.assign(C.newNode('declare'),{name:'n',init:'4'}),
+      output=Object.assign(C.newNode('output'),{expression:'"Risultato"\n" "\nn\n" "\nn == 4\n" "\nn << 1\n" "\nn > 0 ? 9 : 0'});
+    doc.functions[0].body=[number,output];
+    const generated=C.generate(doc);
+    assert.match(generated.code,/cout << "Risultato" << " " << n << " " << \(n == 4\)/);
+    const result=await run(generated.code,'','17',{flow:generated.flow});
+    assert.equal(result.error,'');assert.equal(last(result).output,'Risultato 4 1 8 9\n');
+  });
   for(const standard of ['17','20','23'])await test('Standard effettivo C++'+standard,async()=>{
     const result=await run(program("cout<<is_same_v<decltype(u8'a'),char>;"),'',standard);
     assert.equal(result.error,'');assert.equal(last(result).output,standard==='17'?'1':'0');

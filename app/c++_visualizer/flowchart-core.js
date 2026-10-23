@@ -142,6 +142,14 @@ const FlowchartCore = (() => {
     return result.map(line => expression(line, field, node));
   }
   const stringValue = source => /^"(?:\\.|[^"\\])*"$/.test(source) ? `string(${source})` : source;
+  function outputValue(source) {
+    const outside = source.replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, '');
+    if (/\/[/\*]|\b(and|or|xor|bitand|bitor|not_eq|and_eq|or_eq|xor_eq|throw|co_yield)\b/.test(outside)) return `(${source})`;
+    const and = splitOutside(source, '&');
+    const grouped = ['<<','>>','<','>','=','|','^','?',','].some(operator => splitOutside(source, operator).length > 1)
+      || and.length > 1 && !(and.length === 2 && and[0] === '');
+    return grouped ? `(${source})` : source;
+  }
   function generate(document) {
     validate(document);
     const cppScope=document.scope==='cpp';
@@ -258,7 +266,7 @@ const FlowchartCore = (() => {
           if(node.grouping==='chain'&&node.mode!=='line')out('cin >> '+plan.rows.map(row=>row.target).join(' >> ')+';');
         } else if (node.kind === 'output') {
           const outputs = rows(node.expression, 'Espressioni da mostrare', node.id);
-          out('cout' + outputs.map(row => ` << (${row})`).join('') + (node.ending === 'OUT' ? '' : ' << endl') + ';');
+          out('cout' + outputs.map(row => ` << ${outputValue(row)}`).join('') + (node.ending === 'OUT' ? '' : ' << endl') + ';');
         } else if (node.kind === 'assign') for (const row of plan.rows) out(assigned(row) + ';');
         else if (node.kind === 'call') {
           const callee = functions.get(node.callee);

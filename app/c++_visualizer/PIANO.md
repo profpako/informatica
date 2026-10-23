@@ -1053,3 +1053,27 @@ verificata la permanenza dopo rigenerazione e l’unicità del link. Controlli s
 e tema superati. Chrome: entrambe le schede larghe 1120 px, distanti 22 px;
 a 540 px layout verticale e nessuna eccedenza orizzontale. Viewport ripristinato.
 Schermata: sito-scheda-laboratorio.png. Nessuna modifica al motore C++.
+
+### Output C++ essenziale e controlli CI proporzionati
+
+- [x] Eliminare le parentesi superflue negli output semplici del flowchart.
+  - [x] Conservare la precedenza delle espressioni complesse e verificare il codice generato.
+- [x] Predisporre il riuso di un collaudo positivo per sorgenti e toolchain identici.
+  - [x] Conservare sempre build statica del laboratorio e controlli sito/tema/editor.
+  - [x] Usare hash di codice/test/configurazione e versioni Node/Python/Clang; cache assente o errore e avvio manuale eseguono tutti i test.
+- [ ] Verificare percorsi rapidi/completi, interfaccia, push e pubblicazione.
+
+Output: nessuna parentesi aggiuntiva per testi, valori, variabili, array,
+puntatori, chiamate e aritmetica semplice. Raggruppamento conservato per shift,
+confronti, logica, bitwise, assegnamenti e virgola; commenti/sintassi alternativa
+restano raggruppati per prudenza. Prova mirata fallita prima della correzione;
+test Node superati, 12 test flowchart nativi in 19,6 s e nuova prova WASM inclusa.
+Browser: blocco predefinito Risultato, cout leggibile, esecuzione Risultato.
+Schermata: flowchart-cout-semplice.jpg.
+
+Pipeline: lookup esatto della cache dei soli esiti positivi; salvataggio dopo
+successo di bridge e WASM. Non si usa il solo diff dell’ultimo commit, che
+potrebbe ignorare un precedente push non collaudato. Nessuna dipendenza da
+numero di commit o cronologia completa. Le modifiche a sole pagine, documenti
+o immagini riusano il risultato; senza cache il collaudo viene eseguito.
+Primo collaudo completo e successiva pubblicazione rapida da verificare su GitHub.

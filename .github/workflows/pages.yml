@@ -30,14 +30,47 @@ jobs:
           python3 scripts/check_index.py
           node scripts/check_theme.js
           python3 scripts/build_index.py
-      - name: Costruisci e verifica il visualizzatore condiviso
+      - name: Verifica editor e file del programma
         working-directory: app/c++_visualizer
         run: |
           node test_flowchart.cjs
           node test_program_files.cjs
+      - name: Identifica la toolchain verificata
+        id: toolchain
+        run: |
+          python3 - <<'PYTHON' >> "$GITHUB_OUTPUT"
+          import hashlib, subprocess
+          versions = b''.join(subprocess.check_output(command) for command in [
+              ['node', '--version'], ['python3', '--version'], ['clang++', '--version']])
+          print('version=' + hashlib.sha256(versions).hexdigest())
+          PYTHON
+      - name: Cerca un collaudo identico già superato
+        id: compiler-cache
+        uses: actions/cache/restore@v5
+        continue-on-error: true
+        with:
+          path: .compiler-tests
+          key: cpp-tests-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.version }}-${{ hashFiles('app/c++_visualizer/**/*.py', 'app/c++_visualizer/**/*.js', 'app/c++_visualizer/**/*.mjs', 'app/c++_visualizer/**/*.cjs', 'app/c++_visualizer/**/*.hpp', 'app/c++_visualizer/**/*.json', 'app/c++_visualizer/**/*.html', 'app/c++_visualizer/**/*.css', '.github/workflows/pages.yml') }}
+          lookup-only: true
+      - name: Costruisci sempre il laboratorio online
+        working-directory: app/c++_visualizer
+        run: python3 pages-lab/build.py
+      - name: Collauda compilatore e motore WASM
+        id: compiler-tests
+        if: github.event_name == 'workflow_dispatch' || steps.compiler-cache.outputs.cache-hit != 'true'
+        working-directory: app/c++_visualizer
+        run: |
           python3 pages-lab/test_bridge.py
-          python3 pages-lab/build.py
           node pages-lab/test_wasm.mjs
+          mkdir -p ../../.compiler-tests
+          echo "Test bridge e WASM superati" > ../../.compiler-tests/passed
+      - name: Conserva soltanto un collaudo superato
+        if: steps.compiler-tests.outcome == 'success' && steps.compiler-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        continue-on-error: true
+        with:
+          path: .compiler-tests
+          key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
       - name: Includi l'applicazione online verificata
         run: cp -R app/c++_visualizer/pages-lab/dist sito/cpp-visualizer
       - uses: actions/upload-pages-artifact@v4

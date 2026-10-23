@@ -49,6 +49,26 @@ invalid.functions[0].body = [make('declare', { name: '__segreto' })];
 assert.throws(() => C.generate(invalid), /nome C\+\+ valido/);
 invalid.functions[0].body = [make('output', { expression: '"Testo; { } #"' })];
 assert.match(C.generate(invalid).code, /Testo; \{ \} #/);
+for(const [expression,expected] of [
+  ['"Risultato"','"Risultato"'],['n','n'],['42','42'],["'A'","'A'"],['n + 2','n + 2'],
+  ['v[1]','v[1]'],['*p','*p'],['&n','&n'],['calcola(n, 2)','calcola(n, 2)'],
+  ['"a << b, c = d"','"a << b, c = d"'],['(n == 4)','(n == 4)'],
+  ['n == 4','(n == 4)'],['n < 5','(n < 5)'],['n << 1','(n << 1)'],['n >> 1','(n >> 1)'],
+  ['n & 3','(n & 3)'],['n | 1','(n | 1)'],['n ^ 1','(n ^ 1)'],['n && 1','(n && 1)'],
+  ['n > 0 ? 9 : 0','(n > 0 ? 9 : 0)'],['n = 5','(n = 5)'],['n, n + 1','(n, n + 1)'],
+  ['n and 1','(n and 1)'],['n /* ( */ == 5','(n /* ( */ == 5)']
+]) {
+  const output=C.blank();output.functions[0].body=[make('output',{expression})];
+  assert.ok(C.generate(output).code.includes(`cout << ${expected} << endl;`),expression);
+  output.functions[0].body[0].ending='OUT';
+  assert.ok(C.generate(output).code.includes(`cout << ${expected};`),expression);
+}
+const outputPrecedence=C.blank();
+outputPrecedence.functions[0].body=[make('declare',{name:'n',init:'4'}),make('declare',{name:'v',size:'2',init:'7,8'}),
+  make('declare',{name:'p',mode:'pointer',init:'&n'}),
+  make('output',{expression:'"Risultato"\n" "\nn\n" "\nv[1]\n" "\n*p\n" "\nn + 2'}),
+  make('output',{expression:'n == 4\n" "\nn << 1\n" "\nn & 3\n" "\nn and 1\n" "\nn > 0 ? 9 : 0'}),
+  make('output',{expression:'n = 5\n" "\n(n, n + 1)\n" "\nn /* ( */ == 5'})];
 const pointerDoc = C.blank();
 pointerDoc.functions.push({id:'inc',name:'incrementa',returnType:'void',params:[{name:'p',type:'int',mode:'pointer'}],body:[make('assign',{expression:'*p += 1'})]});
 pointerDoc.functions[0].body=[make('declare',{name:'x',init:'4'}),make('declare',{name:'p',mode:'pointer',init:'&x'}),make('call',{callee:'inc',args:'p'}),make('output',{expression:'x'})];
@@ -296,5 +316,5 @@ stable.functions[0].body=[make('input',{target:'v[0]'})];
 assert.throws(()=>C.generate(stable),/Dichiara l’array/);
 stable.functions[0].body=[make('assign',{expression:'a=1\na=2.5'})];
 assert.equal((C.generate(stable).code.match(/std::decay_t/g)||[]).length,1);
-if (process.argv.includes('--fixture')) process.stdout.write(JSON.stringify({example,generated,pointer:C.generate(pointerDoc),loops:C.generate(doc),automatic:inferred,scoped:scopedGenerated,array:C.generate(arrayDoc),calls:C.generate(calls),hiddenString:C.generate(hiddenString),stringReference:C.generate(stringReference),nestedInput:C.generate(nestedInput)}));
+if (process.argv.includes('--fixture')) process.stdout.write(JSON.stringify({example,generated,pointer:C.generate(pointerDoc),loops:C.generate(doc),automatic:inferred,scoped:scopedGenerated,array:C.generate(arrayDoc),calls:C.generate(calls),hiddenString:C.generate(hiddenString),stringReference:C.generate(stringReference),nestedInput:C.generate(nestedInput),outputPrecedence:C.generate(outputPrecedence)}));
 else console.log('Flowchart: generazione, mappa, rami/cicli, layout, puntatori, JSON e validazione verificati.');
