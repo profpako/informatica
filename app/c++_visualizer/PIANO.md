@@ -1061,7 +1061,7 @@ Schermata: sito-scheda-laboratorio.png. Nessuna modifica al motore C++.
 - [x] Predisporre il riuso di un collaudo positivo per sorgenti e toolchain identici.
   - [x] Conservare sempre build statica del laboratorio e controlli sito/tema/editor.
   - [x] Usare hash di codice/test/configurazione e versioni Node/Python/Clang; cache assente o errore e avvio manuale eseguono tutti i test.
-- [ ] Verificare percorsi rapidi/completi, interfaccia, push e pubblicazione.
+- [x] Verificare percorsi rapidi/completi, interfaccia, push e pubblicazione.
 
 Output: nessuna parentesi aggiuntiva per testi, valori, variabili, array,
 puntatori, chiamate e aritmetica semplice. Raggruppamento conservato per shift,
@@ -1079,4 +1079,9 @@ o immagini riusano il risultato; senza cache il collaudo viene eseguito.
 Collaudo completo su GitHub superato: run 40033919588, 38 casi WASM e bridge,
 build e deploy verdi; esito positivo conservato. HTML/CSS sono esclusi dal
 fingerprint del compilatore; sintassi JS e build restano sempre verificate.
-L’ultimo push di sola documentazione serve a confermare il riuso effettivo.
+Riuso verificato realmente nel run 40036188946: cache positiva ritrovata,
+step compilatore/WASM skipped, build completa in 18 secondi (22:50:58–22:51:16 UTC).
+Build statica, controlli sito/tema/editor e pubblicazione restano attivi.
+Il cout corretto è stato verificato anche nei file realmente distribuiti su Pages.
+Non ripetuta l’intera suite nativa: eseguiti i 12 test specifici del flowchart,
+il collaudo completo WASM/bridge e la prova reale del percorso rapido.
