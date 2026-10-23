@@ -920,3 +920,38 @@ Esecuzione nativa terminata con output 10; evidenziazione integrale sia del rito
 Vero sia dell’uscita Falso, anche con condizioni nascoste. PNG esportato e
 ispezionato. Schermata finale: flowchart-freccia-unica.png. I + sono stati
 rimessi sulla linea su richiesta del docente. Non ripetuta la suite C++ completa.
+
+### Ingresso DO-WHILE, percorso Vero e copia/incolla
+
+- [x] Distinguere il punto di ingresso del DO-WHILE dai raccordi tecnici.
+  - [x] Punta di freccia per il collegamento precedente al ciclo.
+  - [x] Percorso Vero unico fino al primo blocco del corpo o al rombo se vuoto.
+  - [x] Hover completo; traccia dei tratti condivisi senza colorare percorsi non eseguiti.
+- [x] Copiare il blocco selezionato, inclusi rami e corpo, e incollare con nuovi ID.
+  - [x] Pulsanti, scorciatoie fuori dai campi di testo e menu delle frecce.
+  - [x] Riutilizzare Posizione e Annulla; verificare limiti e rollback.
+- [x] Verificare FOR seguito da DO-WHILE vuoto/popolato, PNG e copia di cicli/IF.
+
+Ambito: grafo grafico e renderer condiviso con PNG, editor e test Node.
+Nessuna modifica al runtime, al formato dei file o al codice C++ generato.
+La copia resta nella scheda corrente; le modifiche alle copie non alterano
+l’originale. Le scorciatoie nei campi continuano a copiare/incollare testo.
+
+Verifiche concluse:
+- Test Node Flowchart e file con nome, sintassi editor e git diff --check superati.
+- DO-WHILE vuoto/popolato dopo FOR: punta all’ingresso; ritorno Vero
+  raggruppato fino al corpo/rombo, con un solo + e hover completo.
+- Browser: inserimento della copia dal pulsante e dal menu di una freccia;
+  copia del corpo, ID distinti e Annulla. Test di indipendenza con IF annidato,
+  copia fra subroutine e rollback per limiti di 200 blocchi/12 livelli.
+- Esecuzione nativa FOR seguito da DO-WHILE popolato: output 0. Traccia
+  verificata: al primo ingresso solo tratto condiviso blu; ai ritorni Vero
+  sia ritorno sia tratto condiviso blu. Incolla disabilitato durante la traccia.
+- A 540 px nessuna eccedenza della pagina, pulsanti Aggiungi/Incolla allineati;
+  ripristinata la dimensione normale del browser dopo la verifica.
+- PNG reale esportato e ispezionato; schermata con percorso Vero completo:
+  flowchart-ingresso-do-while.png. Nessuna modifica a runtime o formato dei file.
+- Focus conservato sul blocco dopo la selezione per le scorciatoie. Le API
+  di automazione intercettano copia/incolla: non confermata la combinazione
+  con una tastiera fisica. Verificati i percorsi equivalenti con pulsanti/menu.
+- Non ripetuta la suite C++ completa per questa revisione di editor/rendering.

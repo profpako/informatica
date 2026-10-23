@@ -128,7 +128,16 @@ const FlowchartEditor = (() => {
       const typeLabel = el('label', 'Nuovo blocco '); typeLabel.append(this.kindSelect);
       const whereLabel = el('label', 'Posizione '); whereLabel.append(this.insertion);
       palette.append(typeLabel, whereLabel);
-      this.addButton = this.button('Aggiungi blocco', () => this.addNode(), palette, 'flow-add'); this.root.append(palette);
+      const blockActions=el('div',undefined,'flow-block-actions');palette.append(blockActions);
+      this.addButton = this.button('Aggiungi blocco', () => this.addNode(), blockActions, 'flow-add');
+      this.pasteButton = this.button('Incolla blocco', () => this.pasteNode(), blockActions);this.pasteButton.title='Incolla il blocco copiato nella posizione scelta (Ctrl/Cmd+V)';
+      this.root.append(palette);
+      this.root.addEventListener('keydown',event=>{
+        if(!(event.ctrlKey||event.metaKey)||event.altKey||event.shiftKey||event.target.closest('input,textarea,select,[contenteditable="true"]'))return;
+        const key=event.key.toLowerCase();
+        if(key==='c'&&this.selected&&!window.getSelection()?.toString()){event.preventDefault();this.copyNode();}
+        if(key==='v'&&this.copiedNode&&!this.running){event.preventDefault();this.pasteNode();}
+      });
       this.kindMenu = el('div',undefined,'flow-kind-menu'); this.kindMenu.id = C.id();
       this.kindMenu.setAttribute('popover','auto'); this.kindMenu.setAttribute('role','menu');
       this.kindMenu.setAttribute('aria-label','Scegli il tipo di blocco'); this.kindSelect.setAttribute('aria-controls',this.kindMenu.id);
@@ -169,13 +178,17 @@ const FlowchartEditor = (() => {
       if(this.kindMenu?.matches(':popover-open'))this.kindMenu.hidePopover();
       this.menuAnchor?.setAttribute('aria-expanded','false');
     }
-    openKindMenu(anchor, select, point = null, caption = 'Nuovo blocco') {
+    openKindMenu(anchor, select, point = null, caption = 'Nuovo blocco', pastePosition = null) {
       if(this.running)return;
       this.closeKindMenu(); this.menuAnchor=anchor;
       this.kindMenu.replaceChildren(el('p',caption,'flow-kind-caption'));
       for(const [kind,label] of Object.entries(menuLabels)) {
         const button=this.button('',()=>{this.closeKindMenu();select(kind);if(anchor===this.kindSelect)anchor.focus();},this.kindMenu,'flow-kind-option');
         button.setAttribute('role','menuitem');button.append(blockIcon(kind),el('span',label));
+      }
+      if(pastePosition&&this.copiedNode) {
+        const paste=this.button('',()=>{this.closeKindMenu();this.pasteNode(pastePosition);},this.kindMenu,'flow-kind-option');
+        paste.setAttribute('role','menuitem');paste.append(blockIcon(this.copiedNode.kind),el('span','Incolla blocco · '+menuLabels[this.copiedNode.kind]));
       }
       anchor.setAttribute('aria-expanded','true');anchor.setAttribute('aria-controls',this.kindMenu.id);
       this.kindMenu.showPopover();
@@ -281,6 +294,7 @@ const FlowchartEditor = (() => {
       this.addFunction.hidden = this.running;
       for (const control of [this.newButton,this.exampleButton,this.openButton,this.addFunction,this.kindSelect,this.insertion,this.addButton]) control.disabled = this.running;
       this.undoButton.disabled = this.running || !this.history.length;
+      this.pasteButton.disabled = this.running || !this.copiedNode;
       this.renderFunction(fn); this.renderInspector(fn); this.renderGraph(); this.preview();
     }
     preview() {
@@ -397,6 +411,7 @@ const FlowchartEditor = (() => {
       else this.inspector.append(el('p',node.kind==='break'?'Termina il ciclo che contiene questo blocco.':'Passa al prossimo controllo del ciclo, eseguendo prima l’aggiornamento se è un for.'));
       this.inspector.append(fields);
       const actions = el('div',undefined,'flow-files');
+      const copy=this.button('Copia blocco',()=>this.copyNode(),actions);copy.title='Copia anche il contenuto di rami e cicli (Ctrl/Cmd+C)';
       for(const [text,delta] of [['Sposta su',-1],['Sposta giù',1]]) {
         const button=this.button(text,()=>this.mutate(()=>{const target=found.index+delta;[found.list[found.index],found.list[target]]=[found.list[target],found.list[found.index]];}),actions);
         button.disabled=this.running||found.index+delta<0||found.index+delta>=found.list.length;
@@ -405,14 +420,26 @@ const FlowchartEditor = (() => {
       this.inspector.append(actions);
     }
     addNode() {
+      this.insertNode(this.insertionPosition(),this.kindSelect.value);
+    }
+    copyNode() {
+      const found=C.locate(this.document,this.selected);if(!found)return;
+      this.copiedNode=JSON.parse(JSON.stringify(found.node));this.pasteButton.disabled=this.running;
+      this.message('Blocco copiato, compresi eventuali rami e corpo. Scegli una posizione oppure una freccia per incollarlo.');
+    }
+    pasteNode(position=this.insertionPosition()) {
+      if(!this.copiedNode||this.running)return;
+      this.insertNode(position,this.copiedNode.kind,this.copiedNode);
+    }
+    insertionPosition() {
       const fn=this.document.functions.find(f=>f.id===this.fnId), found=C.locate(this.document,this.selected), where=this.insertion.value;
       let position={fn:fn.id,parent:null,branch:'body',index:fn.body.length};
       if(where==='after'&&found)position={fn:fn.id,parent:found.parent?.id||null,branch:found.branch,index:found.index+1};
       else if(['then','else','body'].includes(where)&&found&&Array.isArray(found.node[where]))position={fn:fn.id,parent:found.node.id,branch:where,index:found.node[where].length};
-      this.insertNode(position,this.kindSelect.value);
+      return position;
     }
-    insertNode(position,kind) {
-      this.mutate(()=>{this.selected=C.insertAt(this.document,position,kind).id;});
+    insertNode(position,kind,copied=null) {
+      this.mutate(()=>{this.selected=C.insertAt(this.document,position,kind,copied).id;});
       this.inspector.querySelector('input:not(:disabled),textarea:not(:disabled),select:not(:disabled)')?.focus({preventScroll:true});
       this.canvas.querySelector(`[data-node="${this.selected}"]`)?.scrollIntoView({block:'nearest',inline:'nearest'});
     }
@@ -429,13 +456,17 @@ const FlowchartEditor = (() => {
       marker.append(svg('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'context-stroke'}));defs.append(marker);drawing.append(defs);
       for(const edge of visible.edges) {
         const group=svg('g',{'class':'flow-edge','data-from':edge.from,'data-to':edge.to});
-        group.dataset.edges=edge.indices.join(' ');
+        group.dataset.routeEdges=edge.indices.join(' ');
         if(edge.owner)group.dataset.owner=edge.owner;if(edge.outcome)group.dataset.outcome=edge.outcome;
         const d=edge.points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
-        const path=svg('path',{d,class:'flow-edge-line'});
-        if(edge.endArrow)path.setAttribute('marker-end','url(#flow-arrow)');
+        for(const segment of edge.segments) {
+          const part=segment.points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
+          const path=svg('path',{d:part,class:'flow-edge-line','data-edges':segment.indices.join(' ')});
+          if(segment.endArrow)path.setAttribute('marker-end','url(#flow-arrow)');
+          group.append(path);
+          if(segment.head)group.append(svg('polygon',{points:segment.head.map(point=>point.join(',')).join(' '),class:'flow-arrowhead','data-edges':segment.indices.join(' '),'aria-hidden':'true'}));
+        }
         if(edge.heads.length)group.dataset.arrow=edge.arrow;
-        group.append(path);
         if(edge.insertion&&!this.running) {
           const position=edge.insertion;
           group.dataset.insertable='true';group.dataset.branch=position.branch;group.dataset.parent=position.parent||'';group.dataset.index=position.index;
@@ -448,11 +479,10 @@ const FlowchartEditor = (() => {
           const title=svg('title');title.textContent=description;group.append(title,svg('path',{d,class:'flow-edge-hit'}));
           const disc=svg('circle',{cx,cy,r:7,class:'flow-insert-disc','aria-hidden':'true'});
           const plus=svg('text',{x:cx,y:cy+4,class:'flow-insert-plus','text-anchor':'middle','aria-hidden':'true'});plus.textContent='+';group.append(handle,disc,plus);
-          group.addEventListener('click',event=>{event.stopPropagation();this.openKindMenu(handle,kind=>this.insertNode(position,kind),{x:event.clientX,y:event.clientY},caption);});
-          group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();this.openKindMenu(handle,kind=>this.insertNode(position,kind),null,caption);}});
+          group.addEventListener('click',event=>{event.stopPropagation();this.openKindMenu(handle,kind=>this.insertNode(position,kind),{x:event.clientX,y:event.clientY},caption,position);});
+          group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();this.openKindMenu(handle,kind=>this.insertNode(position,kind),null,caption,position);}});
         }
         if(edge.text){const [x,y]=edge.points[Math.min(1,edge.points.length-1)];const text=svg('text',{x:x+7,y:y-8});text.textContent=edge.text.length>35?edge.text.slice(0,32)+'…':edge.text;group.append(text);}
-        for(const head of edge.heads)group.append(svg('polygon',{points:head.map(point=>point.join(',')).join(' '),class:'flow-arrowhead','aria-hidden':'true'}));
         drawing.append(group);
       }
       for(const node of visible.nodes) {
@@ -483,8 +513,8 @@ const FlowchartEditor = (() => {
         }
         if(node.shape!=='join' && C.locate(this.document,node.owner)) {
           group.setAttribute('role','button');group.setAttribute('tabindex','0');group.setAttribute('aria-label',C.kinds[C.locate(this.document,node.owner).node.kind]+': '+node.text);
-          const select=()=>{this.selected=node.owner;this.renderInspector(this.document.functions.find(f=>f.id===this.fnId));this.renderGraph();this.paintSource(true);};
-          group.addEventListener('click',select);group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select();this.canvas.querySelector(`[data-node="${node.id}"]`)?.focus({preventScroll:true});}});
+          const select=()=>{this.selected=node.owner;this.renderInspector(this.document.functions.find(f=>f.id===this.fnId));this.renderGraph();this.paintSource(true);this.canvas.querySelector(`[data-node="${node.id}"]`)?.focus({preventScroll:true});};
+          group.addEventListener('click',select);group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select();}});
         }
         if(node.owner===this.selected)group.classList.add('flow-selected');drawing.append(group);
       }
@@ -539,7 +569,7 @@ const FlowchartEditor = (() => {
       if(!this.traceState)return;
       const {point,condition}=this.traceState;
       if(point.fn===this.fnId)for(const index of this.traceState.route||[]) {
-        this.canvas.querySelector(`[data-edges~="${index}"]`)?.classList.add('flow-traversed');
+        this.canvas.querySelectorAll(`[data-edges~="${index}"]`).forEach(part=>part.classList.add('flow-traversed'));
         const edge = this.graph.edges[index];
         for (const id of [edge.from, edge.to]) {
           const node = this.canvas.querySelector(`[data-node="${id}"]`);

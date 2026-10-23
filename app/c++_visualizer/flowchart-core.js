@@ -342,15 +342,18 @@ const FlowchartCore = (() => {
         : shape === 'io' ? visualLines(text, shape).length === 1 ? 50 : visualLines(text, shape).length * 16 + 36
         : Math.max(shape === 'terminal' ? 44 : 62, visualLines(text, shape).length * 16 + (shape === 'terminal' ? 20 : 28)) };
   }
-  function insertAt(document, position, kind) {
+  function insertAt(document, position, kind, copied = null) {
     if (!Object.hasOwn(kinds, kind) || !position || !Number.isInteger(position.index)) fail('Punto di inserimento non valido.');
     const fn = document.functions.find(fn => fn.id === position.fn);
     const parent = position.parent ? locate(document, position.parent) : null;
     if (!fn || position.parent && parent?.fn.id !== fn.id || !['body','then','else'].includes(position.branch)) fail('Punto di inserimento non valido.');
     const list = position.parent ? parent.node[position.branch] : position.branch === 'body' ? fn.body : null;
     if (!Array.isArray(list) || position.index < 0 || position.index > list.length) fail('Punto di inserimento non valido.');
-    const node = newNode(kind);
-    if (kind === 'call') node.callee = document.functions.find(f => f.id !== 'main')?.id || '';
+    const node = copied ? JSON.parse(JSON.stringify(copied)) : newNode(kind);
+    if (copied) {
+      const renew = node => { node.id = id(); for (const key of ['then','else','body']) if (Array.isArray(node[key])) node[key].forEach(renew); };
+      renew(node);
+    } else if (kind === 'call') node.callee = document.functions.find(f => f.id !== 'main')?.id || '';
     list.splice(position.index, 0, node);
     try { validate(document); } catch (error) { list.splice(position.index, 1); throw error; }
     return node;
@@ -370,18 +373,20 @@ const FlowchartCore = (() => {
     return [];
   }
   function drawingGraph(graph) {
-    let edges=graph.edges.map((edge,index)=>({...edge,indices:[index],heads:edge.head?[edge.head]:[],endArrow:edge.endArrow&&!edge.head}));
+    let edges=graph.edges.map((edge,index)=>({...edge,indices:[index],heads:edge.head?[edge.head]:[],endArrow:edge.endArrow&&!edge.head,
+      segments:[{...edge,indices:[index],endArrow:edge.endArrow&&!edge.head}]}));
     const hidden=new Set();
     for(const node of graph.nodes) {
       if(node.shape!=='join')continue;
-      const incoming=edges.filter(edge=>edge.to===node.id), outgoing=edges.filter(edge=>edge.from===node.id);
+      const incoming=edges.filter(edge=>edge.to===node.id&&(!node.loopEntry||edge.owner===node.owner&&edge.outcome==='true')), outgoing=edges.filter(edge=>edge.from===node.id);
       if(incoming.length!==1||outgoing.length!==1||incoming[0]===outgoing[0])continue;
       const a=incoming[0], b=outgoing[0];
       // Distinct insertion positions must remain available on either side of a merge.
       if(JSON.stringify(a.insertion)!==JSON.stringify(b.insertion))continue;
       edges=edges.filter(edge=>edge!==a&&edge!==b);
+      const continuation=b.segments.map((segment,index)=>index?segment:{...segment,points:[a.points.at(-1),...segment.points]});
       edges.push({...a,to:b.to,points:a.points.concat(b.points),indices:a.indices.concat(b.indices),
-        heads:a.heads.concat(b.heads),endArrow:b.endArrow});
+        heads:a.heads.concat(b.heads),arrow:a.arrow||b.arrow,endArrow:b.endArrow,segments:a.segments.concat(continuation)});
       hidden.add(node.id);
     }
     return {...graph,nodes:graph.nodes.filter(node=>!hidden.has(node.id)),edges};
@@ -436,6 +441,7 @@ const FlowchartCore = (() => {
         } else if (['while','for','do'].includes(n.kind)) {
           const isDo = n.kind==='do';
           entry = isDo ? addNode(n.id+':entry',x,y,'join','',n.id) : addNode(n.id,x,y,shapeFor(n.kind),label(n,document));
+          if(isDo){entry.loopEntry=true;entry.height=0;}
           if(n.kind==='for')entry.parts=forParts(n);
           const bodyY = y+entry.height+(n.kind==='while'?58:gap);
           const body = sequence(n.body,x,bodyY,{...context, breakId:n.id+':exit',continueId:n.id,continueLabel:n.kind==='for'?n.update:''},n.id,'body');
@@ -452,7 +458,7 @@ const FlowchartCore = (() => {
             edge(diamond.id,empty.id,[[x,y+diamond.height],[x,empty.y]],n.id,'true','Vero',position(n.id,'body',0),n.kind==='while'?'source-down':null);
             edge(empty.id,diamond.id,[[x,empty.y+empty.height],[x,empty.y+empty.height+18],[leftX,empty.y+empty.height+18],[leftX,y+diamond.height/2],[x-diamond.width/2,y+diamond.height/2]],n.id,null,'',position(n.id,'body',0));
           }
-          if(isDo) edge(diamond.id,entry.id,[[x-120,diamond.y+45],[leftX,diamond.y+45],[leftX,y+6],[x,y+6]],n.id,'true','Vero',position(n.id,'body',0));
+          if(isDo) edge(diamond.id,entry.id,[[x-120,diamond.y+45],[leftX,diamond.y+45],[leftX,y],[x,y]],n.id,'true','Vero',position(n.id,'body',0));
           edge(diamond.id,join.id,isDo?[[x,diamond.y+90],[x,join.y]]:[[x+diamond.width/2,y+diamond.height/2],[rightX,y+diamond.height/2],[rightX,join.y],[x,join.y]],n.id,'false','Falso',position(parent,branch,index+1));
           exit=join.id;
         } else {
@@ -472,7 +478,7 @@ const FlowchartCore = (() => {
     connect(start.id,body.first||end.id,position(null,'body',0)); connect(body.tail,end.id,position(null,'body',fn.body.length));
     for(const e of edges) {
       const destination=byId(e.to);
-      e.endArrow = destination.shape !== 'join';
+      e.endArrow = destination.shape !== 'join' || !!destination.loopEntry && e.from !== destination.owner;
       if(destination && e.jump) {
         const lane=center+total.width/2+20;
         e.points=[[e.points[0][0],e.points[0][1]],[lane,e.points[0][1]+15],[lane,destination.y+destination.height/2],[destination.x+destination.width/2,destination.y+destination.height/2]];

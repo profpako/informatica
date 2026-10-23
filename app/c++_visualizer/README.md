@@ -26,6 +26,13 @@ Le frecce di salto di Restituisci, Esci dal ciclo e Continua il ciclo non sono
 punti di inserimento. Durante l'esecuzione i menu di inserimento sono disattivati.
 Per decisioni e cicli, il menu **Posizione** permette di aggiungere istruzioni
 nei rami Vero/Falso o nel corpo. Sono disponibili riordino, eliminazione e Annulla.
+Seleziona un blocco e premi **Copia blocco**, poi scegli **Posizione** e
+**Incolla blocco**, oppure **Incolla blocco** nel menu di una freccia. Sono
+disponibili anche **Ctrl/Cmd+C** e **Ctrl/Cmd+V** quando il focus è sul diagramma;
+nei campi di testo le scorciatoie mantengono la funzione abituale. La copia
+include tutti i blocchi di rami e cicli, usa identificatori nuovi ed è indipendente
+dall’originale. Resta disponibile nella scheda corrente, anche fra subroutine;
+**Annulla** rimuove l’incollamento.
 
 La testata riunisce modalità, nome e gestione dei file. **Altro** contiene
 **Nuovo diagramma**, **Esempio area** ed **Esporta PNG**. La barra **Subroutine**
@@ -42,6 +49,11 @@ I raccordi dei percorsi sono linee continue: non mostrano cerchietti né punte d
 freccia intermedie. I **+** restano sulla linea; i tratti consecutivi che
 inseriscono nello stesso punto hanno un unico **+**. L'evidenziazione
 del percorso attraversa anche i raccordi senza interrompere la linea.
+L’ingresso del DO-WHILE ha una punta per il percorso proveniente dal blocco
+precedente. Il ritorno Vero si ricongiunge lì e si evidenzia fino al primo blocco
+del corpo, oppure fino alla punta sopra il rombo quando il corpo è vuoto.
+La traccia distingue il tratto condiviso dal ritorno, evitando di evidenziare
+il ramo Vero quando il ciclo viene raggiunto per la prima volta.
 
 La sintassi dei campi segue le convenzioni concordate, simili ad AlgoBuild:
 
