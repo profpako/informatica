@@ -54,7 +54,7 @@ template<class T> std::string value(const T &v) {
 }
 struct Entry {
     int id, frame, declaration;
-    bool parameter;
+    bool parameter, active;
     std::string name, type;
     std::uintptr_t addr;
     std::size_t size, count;
@@ -144,6 +144,7 @@ inline void snapshot(int line, const std::string &event, const std::string &erro
     s.trace << "],\"variables\":[";
     first = true;
     for (const auto *e : s.entries) {
+        if (!e->active) continue;
         if (!first) s.trace << ',';
         first = false;
         s.trace << "{\"id\":" << e->id << ",\"frame\":" << e->frame
@@ -195,15 +196,22 @@ inline void mark(const void *p) {
     auto addr = reinterpret_cast<std::uintptr_t>(p);
     for (auto *e : state().entries)
         if (addr >= e->addr && addr < e->addr + e->size * e->count && (addr - e->addr) % e->size == 0)
-            e->initialized[(addr - e->addr) / e->size] = true;
+            { e->initialized[(addr - e->addr) / e->size] = true; e->active = true; }
+}
+inline void activate(const void *p, bool defaultInitialized = false) {
+    auto addr = reinterpret_cast<std::uintptr_t>(p);
+    for (auto *e : state().entries) if (e->addr == addr) {
+        e->active = true;
+        if (defaultInitialized) std::fill(e->initialized.begin(), e->initialized.end(), true);
+    }
 }
 struct Watch {
     Entry entry;
     Watch(std::string name, std::string type, std::uintptr_t addr, std::size_t size,
           std::size_t count, bool init, bool reference, bool pointer, bool array,
-          std::function<std::string(std::size_t)> reader, bool persistent, int declaration, bool parameter) :
+          std::function<std::string(std::size_t)> reader, bool persistent, int declaration, bool parameter, bool active) :
         entry{state().next++, persistent || state().calls.empty() ? 0 : state().calls.back().id,
-              declaration, parameter,
+              declaration, parameter, active,
               name, type, addr, size, count, reference, pointer, array,
               std::vector<bool>(count, init), reader} {
         if (reference) for (std::size_t i = 0; i < count; ++i) entry.initialized[i] = initialized(addr + i * size);
@@ -215,14 +223,14 @@ struct Watch {
         entries.erase(std::remove(entries.begin(), entries.end(), &entry), entries.end());
     }
 };
-template<class T> Watch watch(const char *name, const char *type, T &object, bool init, bool reference, bool persistent, int declaration, bool parameter) {
+template<class T> Watch watch(const char *name, const char *type, T &object, bool init, bool reference, bool persistent, int declaration, bool parameter, bool active = true) {
     if constexpr (std::is_array_v<T>) {
         constexpr auto n = std::extent_v<T>;
         if (n > 100) fail("Gli array possono avere al massimo 100 elementi.");
         return Watch(name, type, reinterpret_cast<std::uintptr_t>(&object), sizeof(object[0]), n,
-            init, reference, false, true, [p = &object](std::size_t i) { return value((*p)[i]); }, persistent, declaration, parameter);
+            init, reference, false, true, [p = &object](std::size_t i) { return value((*p)[i]); }, persistent, declaration, parameter, active);
     } else return Watch(name, type, reinterpret_cast<std::uintptr_t>(&object), sizeof(T), 1,
-        init, reference, std::is_pointer_v<T>, false, [p = &object](std::size_t) { return value(*p); }, persistent, declaration, parameter);
+        init, reference, std::is_pointer_v<T>, false, [p = &object](std::size_t) { return value(*p); }, persistent, declaration, parameter, active);
 }
 struct Frame {
     int line;
@@ -246,6 +254,11 @@ template<class F> decltype(auto) invoke(int site, F call) {
     return call();
 }
 template<class T> T read(const T &v, int line, int begin = -1, int end = -1) {
+    if (!initialized(reinterpret_cast<std::uintptr_t>(&v))) fail("Lettura di una variabile non inizializzata.", line);
+    capture_condition(v, begin, end);
+    return v;
+}
+template<class T> T &checked(T &v, int line, int begin = -1, int end = -1) {
     if (!initialized(reinterpret_cast<std::uintptr_t>(&v))) fail("Lettura di una variabile non inizializzata.", line);
     capture_condition(v, begin, end);
     return v;

@@ -91,6 +91,52 @@ rifiutate. La cartella del progetto non viene esposta come file server.
 
 ## Interfaccia
 
+La modalità Flowchart usa documenti JSON versionati e blocchi strutturati con
+connessioni SVG automatiche. Il generatore mantiene una mappa riga→blocco; la stessa
+traccia nativa pilota evidenziazione, condizioni, memoria e apertura della subroutine
+attiva. Input/output/assegnamenti sono multilinea, con tipo iniziale opzionale
+nell'input e distinzione OUT/OUTLN. La migrazione dal formato 1 al 2 converte gli
+output con operatori di stream conservando identificatori e collegamenti.
+
+Le frecce delle sequenze e dei controlli indicano anche la posizione di inserimento
+(subroutine, contenitore, ramo, indice). Palette e menu sulla freccia riusano la
+stessa operazione con validazione e annullamento. Il menu mostra miniature SVG delle
+forme; un piccolo + visibile ha un'area di clic separata, più grande. I salti non
+introducono punti di inserimento. FOR usa un esagono allungato con tre campi e
+misure dinamiche; WHILE e DO...WHILE conservano i rombi e le rispettive connessioni
+verticali dal basso e dall'alto. INIZIO/FINE comprendono il nome della subroutine.
+
+FOR mostra le tre espressioni su una riga con tre porzioni SVG focalizzabili e
+tooltip su mouse/focus; la larghezza viene adattata al testo. WHILE e DO...WHILE
+usano punte di freccia esplicite nei vertici richiesti. Il percorso appena seguito
+è ricavato dalla traccia e dai raccordi del grafo, usando l'esito effettivo anche
+per rami vuoti; non attraversa istruzioni intermedie mai eseguite. La velocità
+regola il timer di riproduzione, mantenendo i passi registrati invariati.
+
+Il PNG è generato localmente dal diagramma SVG completo, con stili incorporati e
+senza controlli di modifica, poi rasterizzato su canvas con fondo bianco e limiti
+di dimensione. La CSP abilita soltanto immagini self/blob per questa operazione.
+
+L'importazione C++ usa l'AST di Clang senza eseguire il programma, tramite API
+locale autenticata. Il documento formato 3 conserva l'ambito C++: nessuna inferenza
+o anticipazione delle dichiarazioni, omonimie lessicali e contatore locale al FOR.
+Il C++ originale è conservato; la sostituzione del diagramma è annullabile. Le
+inizializzazioni da funzione restano un'unica dichiarazione/chiamata, così il
+risultato non compare prematuramente durante il calcolo. Cin concatenato e getline
+mantengono la forma di lettura originale. Gli esclusi producono diagnosi, non
+traduzioni approssimate. I diagrammi manuali mantengono la durata di subroutine.
+
+L'inferenza usa std::decay_t<decltype(espressione)> e il tipo canonico di Clang,
+senza rivalutare l'espressione. Gli scalari nati dentro rami/cicli hanno storage
+nativo anticipato prima della struttura che li contiene, per mantenere durata di
+subroutine. Metadati opzionali e validati dell'API identificano queste dichiarazioni:
+non generano passi e i monitor restano inattivi finché una scrittura o dichiarazione
+eseguita li attiva. Le letture non inizializzate sono comunque controllate. Questa
+distinzione tra storage tecnico del C++ generato e creazione logica riguarda solo
+il flowchart: il C++ scritto dal docente conserva i propri ambiti e durate.
+Array, costanti e riferimenti espliciti si dichiarano nel corpo della subroutine,
+prima delle strutture di controllo. Il motore ordinario non riceve metadati flow.
+
 Direzione: banco di laboratorio, con editor a sinistra e memoria a destra; pila
 delle chiamate e console restano visibili. Nessuna pagina promozionale.
 

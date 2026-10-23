@@ -390,9 +390,10 @@ $('run').addEventListener('click', async () => {
   $('run-hint').textContent = 'Compilo il programma e registro i passi.';
   $('error').hidden = true;
   try {
-    const source = mode === 'flow' ? flowEditor.getSource().code : code.value;
+    const generated = mode === 'flow' ? flowEditor.getSource() : null;
+    const source = generated ? generated.code : code.value;
     if (mode === 'flow') flowEditor.setRunning(true);
-    const response = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Visualizer-Token': token }, body: JSON.stringify({ code: source, input: input.value }) }).catch(() => {
+    const response = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Visualizer-Token': token }, body: JSON.stringify({ code: source, input: input.value, ...(generated ? {flow: generated.flow} : {}) }) }).catch(() => {
       throw new Error('Server locale non raggiungibile. Avvia avvia.command e tieni aperto il terminale, poi ricarica la pagina e riprova. Codice e input sono conservati.');
     });
     const data = await response.json();
@@ -421,6 +422,21 @@ $('run').addEventListener('click', async () => {
 });
 $('mode-cpp').addEventListener('click', () => setMode('cpp'));
 $('mode-flow').addEventListener('click', () => setMode('flow'));
+$('cpp-to-flow').addEventListener('click', async () => {
+  const requestVersion=version, source=code.value, sourceInput=input.value;
+  $('cpp-to-flow').disabled=true; $('cpp-to-flow').textContent='Conversione…'; $('error').hidden=true;
+  try {
+    const response=await fetch('/api/import-flowchart',{method:'POST',headers:{'Content-Type':'application/json','X-Visualizer-Token':token},body:JSON.stringify({code:source})});
+    const result=await response.json();
+    if(requestVersion!==version)return;
+    if(!response.ok)throw new Error(result.error||'Conversione non riuscita.');
+    const document=FlowchartCore.validate(result.document);
+    FlowchartCore.generate(document);
+    storage.set('flow-input',sourceInput);setMode('flow');flowEditor.replace(document);
+    flowEditor.message('C++ importato: il sorgente originale è conservato. Annulla ripristina il diagramma precedente.');
+  } catch(error) {if(requestVersion===version){$('error').textContent=error.message;$('error').hidden=false;}}
+  finally {$('cpp-to-flow').disabled=!token;$('cpp-to-flow').textContent='C++ → Flowchart';}
+});
 $('first').addEventListener('click', () => seek(0)); $('last').addEventListener('click', () => seek(steps.length - 1));
 $('prev').addEventListener('click', () => seek(position - 1)); $('next').addEventListener('click', () => seek(position + 1));
 $('timeline').addEventListener('input', () => seek(Number($('timeline').value)));
@@ -433,11 +449,18 @@ $('memory-clear').addEventListener('change', () => {
   if (steps.length) render();
   else renderMemory(retainedMemory || { frames: [], variables: [] }, null, !!retainedMemory, retainedCalls);
 });
+function startPlayback() {
+  $('play').textContent = 'Ⅱ'; $('play').setAttribute('aria-label', 'Pausa');
+  timer = setInterval(() => { if (position >= steps.length - 1) return pause(); position++; render(); }, 1000 / Number($('speed').value));
+}
 $('play').addEventListener('click', () => {
   if (timer) return pause();
-  if (position === steps.length - 1) position = 0;
-  $('play').textContent = 'Ⅱ'; $('play').setAttribute('aria-label', 'Pausa');
-  timer = setInterval(() => { if (position >= steps.length - 1) return pause(); position++; render(); }, 1000);
+  if (position === steps.length - 1) { position = 0; render(); }
+  startPlayback();
+});
+$('speed').addEventListener('change', () => {
+  storage.set('speed', $('speed').value);
+  if (timer) { pause(); startPlayback(); }
 });
 $('projection').addEventListener('click', () => {
   const enabled = document.body.classList.toggle('large');
@@ -462,9 +485,10 @@ async function initialize() {
     $('examples').value = matching < 0 ? '' : String(matching);
     $('memory-clear').value = storage.get('memory-clear') === 'finish' ? 'finish' : 'next-run';
     $('conditions').checked = storage.get('conditions') === 'true';
+    const speed = storage.get('speed'); $('speed').value = ['0.25','0.5','1','2','4'].includes(speed) ? speed : '1';
     if (storage.get('large') === 'true') { document.body.classList.add('large'); $('projection').setAttribute('aria-pressed', 'true'); }
     setMode(storage.get('mode') === 'flow' ? 'flow' : 'cpp', true);
-    updateLines(); $('run').disabled = false;
+    updateLines(); $('run').disabled = false; $('cpp-to-flow').disabled = false;
   } catch (error) { $('error').textContent = error.message + ' Verifica che il server locale sia attivo.'; $('error').hidden = false; }
 }
 initialize();

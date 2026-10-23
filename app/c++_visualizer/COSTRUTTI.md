@@ -35,7 +35,7 @@ riscrittura del codice del docente in un linguaggio di simulazione.
 
 La lista non promette tutte le combinazioni possibili del linguaggio. Sono stati
 provati i casi didattici descritti nei test; un caso non gestito viene rifiutato con
-una diagnosi. In particolare: sono ammessi solo gli header iostream/string/iomanip;
+una diagnosi. In particolare: sono ammessi solo gli header iostream/string/iomanip/type_traits;
 sono esclusi macro, inizializzazioni globali con chiamate, ritorni per riferimento
 o puntatore, aritmetica dei puntatori e dichiarazioni nelle condizioni. Gli array
 di char si usano per singoli elementi, senza le operazioni sulle stringhe C.

@@ -4,7 +4,7 @@ Visualizzatore didattico C++17 per le lezioni di Informatica SIA. Il docente pu�
 scrivere un programma al momento, eseguirlo e osservare valori, array, riferimenti,
 puntatori e pila delle chiamate. L'esecuzione è locale e non richiede account o rete.
 
-## Flowchart: versione in sviluppo
+## Programmare con i flowchart
 
 La modalità **Flowchart** permette di costruire diagrammi a blocchi con collegamenti
 automatici, dichiarazioni, input/output, decisioni, cicli e chiamate a subroutine.
@@ -12,11 +12,107 @@ Il diagramma genera C++ ed è eseguito dal medesimo motore locale: memoria, cons
 parametri e passi restano disponibili. Codice C++ e diagramma hanno salvataggi
 separati nel browser; il diagramma può essere salvato e riaperto come file JSON.
 
-Questo è un salvataggio intermedio: i campi utilizzano ancora espressioni C++.
-L'adattamento a una sintassi simile ad AlgoBuild, comprese dichiarazioni esplicite
-e creazione automatica delle variabili, è in fase di definizione con il docente.
-Le decisioni e le verifiche completate sono registrate in [PIANO.md](PIANO.md).
+Scegliere **Flowchart** per partire da Inizio/Fine, oppure **Esempio area** per
+osservare una funzione già pronta. Selezionare il tipo di blocco e premere
+**Aggiungi blocco**; selezionare un blocco del diagramma per modificarne i campi.
+Si può anche cliccare direttamente su una freccia o sul suo **+**: il menu mostra
+il nome e la forma di ciascun tipo di blocco e lo inserisce in quel punto.
+Il dropdown **Nuovo blocco** contiene le stesse miniature. Le frecce dei rami
+Vero/Falso inseriscono nel ramo scelto, quelle del corpo e del ritorno del ciclo
+inseriscono nel corpo; l'uscita Falso del ciclo inserisce dopo il ciclo.
+Per usare la tastiera, raggiungere un **+** con Tab e premere Invio o Spazio;
+nel menu usare frecce su/giù, Home/End e Invio. Escape chiude senza inserire.
+Le frecce di salto di Restituisci, Esci dal ciclo e Continua il ciclo non sono
+punti di inserimento. Durante l'esecuzione i menu di inserimento sono disattivati.
+Per decisioni e cicli, il menu **Inserisci** permette di aggiungere istruzioni
+nei rami Vero/Falso o nel corpo. Sono disponibili riordino, eliminazione e Annulla.
+
+La sintassi dei campi segue le convenzioni concordate, simili ad AlgoBuild:
+
+- **Assegnamento**: uno per riga, per esempio `area = base * altezza` e `i = i + 1`,
+  senza punto e virgola. Una nuova variabile ricava il tipo dal primo assegnamento:
+  `n = 0` crea un int, `prezzo = 2.5` un double, `nome = "Ada"` una string.
+- **Input**: una variabile per riga. `base` crea un double se non esiste;
+  `int altezza` o `string nome` specificano il tipo iniziale. Una variabile già
+  dichiarata conserva il suo tipo. Le celle si scrivono come `v[i]` dopo aver
+  dichiarato l'array. I valori di input vanno forniti prima di avviare la traccia.
+  **Tipo lettura → Riga completa** usa getline e crea una string se nuova.
+- **Output**: un'espressione per riga, per esempio `"Area: "` e poi `area`.
+  Le espressioni sono mostrate in sequenza: **OUT** continua sulla stessa riga,
+  **OUTLN** aggiunge un solo a capo alla fine del blocco. Gli spazi desiderati
+  vanno inseriti nelle stringhe. Non servono cin, cout o gli operatori di stream.
+- **Dichiarazione**: resta disponibile per scegliere tipo, nome, inizializzazione,
+  array, puntatori, riferimenti e costanti. Non occorre dichiarare prima ogni scalare.
+- **Condizioni e cicli**: usare `==`, `!=`, `&&`, `||`, `!`; il for ha tre campi,
+  per esempio `i = 0`, `i < 10`, `i = i + 1`. Il contatore può nascere nel for.
+  Il FOR è un esagono allungato con le tre parti su un'unica riga, per esempio
+  `i = 0; i < 10; i = i + 1`. Passando il mouse o spostando il focus su ciascuna
+  parte compare il tooltip Inizializzazione, Condizione oppure Incremento.
+  La larghezza si adatta al testo; gli ovali riportano **INIZIO nome()** e **FINE nome()**.
+  I nomi nei menu sono **IF**, **FOR**, **WHILE**, **DO...WHILE**. Il WHILE esce
+  verso il basso dal vertice inferiore del rombo, anche quando il corpo è vuoto;
+  nel DO...WHILE la freccia del corpo scende verso il vertice superiore del rombo.
+  Il piccolo cerchio del + lascia visibili le punte; la sua area di clic è più ampia.
+- **Subroutine**: aggiungerle e sceglierle dal menu Diagramma; nelle proprietà
+  impostare nome, risultato e parametri per valore, riferimento, puntatore o array.
+  Usare Chiamata per gli argomenti e l'eventuale destinazione del risultato;
+  una destinazione scalare nuova ricava il tipo restituito. Restituisci indica il ritorno.
+
+Nei diagrammi costruiti con i blocchi ogni variabile appartiene alla propria subroutine: se creata dentro
+un ramo o un ciclo rimane disponibile fino alla conclusione della chiamata. Un
+ramo non percorso non crea le sue variabili. Il tipo resta stabile; assegnazioni
+successive seguono le conversioni C++, quindi assegnare 2.5 a un int produce 2.
+Una lettura prima dell'inizializzazione interrompe la traccia. I simboli hanno un
+solo significato nella subroutine: non sono previste dichiarazioni omonime in rami
+diversi. Dichiarare array, costanti e riferimenti nel corpo della subroutine,
+prima di rami e cicli; gli scalari e i puntatori possono essere creati anche al loro interno.
+
+**Visualizza esecuzione** usa gli stessi controlli, memoria, console e fotografie
+della modalità C++. Il blocco attivo ha un bordo blu. **Mostra condizioni** colora
+il rombo e il percorso Vero/Falso; entrando in una subroutine si apre il suo
+diagramma e al ritorno si torna al chiamante. **Modifica diagramma** riapre i campi.
+La freccia appena percorsa è evidenziata in blu anche con Mostra condizioni spento;
+i raccordi attraversati sono evidenziati insieme. **Velocità** regola la riproduzione
+da 0,25× (4 secondi per passo) a 4× (0,25 secondi per passo), anche durante l'animazione.
+La scelta è ricordata e vale anche per il codice C++.
+
+**Salva diagramma** esporta il documento `.flow.json`; **Apri diagramma** lo
+ripristina. Nuovo diagramma ed Esempio area sono annullabili. Il diagramma è
+anche ricordato nel browser, separatamente dal codice C++ e dai suoi input.
+I documenti delle versioni 1 e 2 vengono aggiornati al formato 3 conservando
+blocchi e identificatori. **Esporta PNG** scarica l'intero diagramma della subroutine
+selezionata su fondo bianco, anche se parte del disegno è fuori dall'area visibile.
+Mantiene testo e colori correnti ed esclude i + di modifica. Le dimensioni sono
+limitate a 8192 pixel per lato e 32 megapixel; diagrammi molto grandi vengono ridotti.
+Questo formato JSON è del visualizzatore, non un file nativo di AlgoBuild.
 L'esecuzione richiede il server locale descritto sotto.
+
+## Passare fra C++ e flowchart
+
+- **C++ → Flowchart**: scrivere il codice nell'editor C++ e premere il pulsante
+  omonimo sotto l'editor. Il programma viene analizzato da Clang e trasformato in
+  blocchi modificabili, con un diagramma per subroutine. Il codice originale resta
+  nell'editor C++; gli input vengono copiati per la prova del diagramma. Annulla
+  ripristina il diagramma precedente. Una conversione fallita non sostituisce il lavoro.
+- **Flowchart → C++**: espandere **C++ generato**, sotto il diagramma, per leggere
+  il sorgente equivalente; **Scarica C++ generato** lo salva come `.cpp`.
+  Il pulsante di modalità **C++** torna al sorgente originale conservato: le modifiche
+  successive al diagramma non sovrascrivono automaticamente quell'editor.
+
+I diagrammi importati da C++ riportano una nota: conservano gli ambiti C++, comprese
+omonimie nei blocchi, dichiarazioni di array/costanti/riferimenti nei rami e contatori
+locali al FOR. Le dichiarazioni restano esplicite. Questo permette di osservare lo
+stesso comportamento del codice originale, distinto dalle variabili di subroutine
+dei diagrammi creati in stile AlgoBuild. L'input concatenato C++ mantiene una singola
+eco nella console; getline conserva la lettura della riga intera.
+
+Sono importabili funzioni/procedure con parametri per valore, riferimento, puntatore
+e array (anche const), dichiarazioni semplici, console, assegnamenti, IF, FOR,
+WHILE, DO...WHILE, chiamate, return, break e continue. Nella prima importazione
+sono esclusi globali/statiche, switch, blocchi anonimi separati, overload, parametri
+predefiniti, puntatori costanti (`int *const p`) e varianti di getline con stream/delimitatori personalizzati.
+Il compilatore e i limiti generali del visualizzatore restano applicati. Il messaggio
+indica la riga del costrutto escluso; non viene prodotta una conversione parziale.
 
 ## Avvio su macOS
 
@@ -190,7 +286,7 @@ cicli, funzioni, riferimenti, puntatori di base, ambiti e console.
 
 - Questa distribuzione esegue programmi su **macOS**. Windows e Linux richiedono
   un isolamento del processo diverso e non sono stati verificati.
-- Gli include ammessi sono `<iostream>`, `<string>`, `<iomanip>`. Macro e altre
+- Gli include ammessi sono `<iostream>`, `<string>`, `<iomanip>`, `<type_traits>`. Macro e altre
   direttive del preprocessore non sono supportate.
 - Matrici, struct, file, stringhe C, memoria dinamica e contenitori STL non sono
   inclusi. Gli array di caratteri sono utilizzabili per singoli elementi.
@@ -219,8 +315,10 @@ didattico del docente, non un servizio pubblico per eseguire sorgenti anonimi.
 ## Verifiche
 
 ```sh
-python3 -m unittest test_engine test_server test_roles -v
+python3 -m unittest test_engine test_server test_roles test_flowchart_engine test_flowchart_import -v
+node test_flowchart.cjs
 node --check app.js
+node --check flowchart-editor.js
 ```
 
 I test del motore compilano programmi C++ e avviano `sandbox-exec`: devono essere

@@ -12,6 +12,26 @@ const FlowchartEditor = (() => {
     for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
     return node;
   };
+  function contour(shape, width, height) {
+    const half = width / 2;
+    if (shape === 'decision') return svg('polygon', {points:`0,0 ${half},${height/2} 0,${height} ${-half},${height/2}`});
+    if (shape === 'for') {
+      const bevel = Math.min(28, width / 7);
+      return svg('polygon', {points:`${-half+bevel},0 ${half-bevel},0 ${half},${height/2} ${half-bevel},${height} ${-half+bevel},${height} ${-half},${height/2}`});
+    }
+    if (shape === 'io') return svg('polygon',{points:`${-half+width*.075},0 ${half},0 ${half-width*.075},${height} ${-half},${height}`});
+    if (shape === 'join') return svg('circle',{cx:0,cy:6,r:6});
+    return svg('rect',{x:-half,y:0,width,height,rx:shape==='terminal'?height/2:3});
+  }
+  function blockIcon(kind) {
+    const shape = C.shapeFor(kind);
+    const drawing = svg('svg', {viewBox:'-32 -2 64 36',width:44,height:26,'aria-hidden':'true',class:'flow-icon '+shape});
+    drawing.append(contour(shape,56,30));
+    if (shape === 'call') drawing.append(svg('path',{d:'M -23 0 V 30 M 23 0 V 30'}));
+    const label = svg('text', {x:0,y:19,'text-anchor':'middle'});
+    label.textContent = ({declare:'x',input:'IN',output:'OUT',assign:'=',if:'?',while:'↻',for:'i',do:'↻',call:'f()',return:'↵',break:'↗',continue:'↶'})[kind];
+    drawing.append(label); return drawing;
+  }
   return class {
     constructor(root, options) {
       this.root = root; this.options = options; this.document = C.blank();
@@ -59,35 +79,120 @@ const FlowchartEditor = (() => {
       });
       this.openButton = this.button('Apri diagramma', () => this.file.click(), files);
       this.button('Salva diagramma', () => this.download(JSON.stringify(this.document, null, 2), 'lezione.flow.json', 'application/json'), files);
+      this.pngButton = this.button('Esporta PNG', () => this.exportPng(), files);
       files.append(this.file); this.root.append(files);
       this.functionProps = el('details', undefined, 'flow-function-props'); this.functionProps.append(el('summary', 'Parametri e risultato della subroutine'));
       this.functionForm = el('div'); this.functionProps.append(this.functionForm); this.root.append(this.functionProps);
       this.status = el('p', '', 'flow-status'); this.status.setAttribute('role', 'status'); this.root.append(this.status);
+      this.scopeNote=el('p','Importato da C++: dichiarazioni e durata delle variabili seguono gli ambiti C++, compreso il contatore locale al FOR.','flow-status');this.scopeNote.hidden=true;this.root.append(this.scopeNote);
       this.canvas = el('div', undefined, 'flow-canvas'); this.canvas.tabIndex = 0;
+      this.canvas.addEventListener('scroll',()=>this.hideForTooltip());
       this.canvas.setAttribute('aria-label', 'Diagramma di flusso: seleziona un blocco per modificarlo'); this.root.append(this.canvas);
       this.inspector = el('div', undefined, 'flow-inspector'); this.root.append(this.inspector);
       const palette = el('div', undefined, 'flow-palette');
-      this.kindSelect = this.select(Object.entries(C.kinds), 'Tipo di blocco da aggiungere');
+      this.kindSelect = el('button',undefined,'flow-kind-select'); this.kindSelect.type = 'button';
+      this.kindSelect.setAttribute('aria-label','Tipo di blocco da aggiungere');
+      this.kindSelect.setAttribute('aria-haspopup','menu'); this.kindSelect.setAttribute('aria-expanded','false');
+      this.chooseKind('declare');
+      this.kindSelect.addEventListener('click',()=>this.openKindMenu(this.kindSelect,kind=>this.chooseKind(kind)));
       this.insertion = this.select([], 'Posizione del nuovo blocco');
       const typeLabel = el('label', 'Nuovo blocco '); typeLabel.append(this.kindSelect);
       const whereLabel = el('label', 'Inserisci '); whereLabel.append(this.insertion);
       palette.append(typeLabel, whereLabel);
       this.addButton = this.button('Aggiungi blocco', () => this.addNode(), palette, 'flow-add'); this.root.append(palette);
+      this.kindMenu = el('div',undefined,'flow-kind-menu'); this.kindMenu.id = C.id();
+      this.kindMenu.setAttribute('popover','auto'); this.kindMenu.setAttribute('role','menu');
+      this.kindMenu.setAttribute('aria-label','Scegli il tipo di blocco'); this.kindSelect.setAttribute('aria-controls',this.kindMenu.id);
+      this.kindMenu.addEventListener('toggle',event=>{if(event.newState==='closed')this.menuAnchor?.setAttribute('aria-expanded','false');});
+      this.kindMenu.addEventListener('keydown',event=>{
+        const items=[...this.kindMenu.querySelectorAll('[role="menuitem"]')], index=items.indexOf(document.activeElement);
+        let next;
+        if(event.key==='ArrowDown')next=(index+1)%items.length;
+        else if(event.key==='ArrowUp')next=(index-1+items.length)%items.length;
+        else if(event.key==='Home')next=0;else if(event.key==='End')next=items.length-1;
+        if(next!==undefined){event.preventDefault();items[next]?.focus();}
+      });
+      this.root.append(this.kindMenu);
+      this.forTooltip = el('div',undefined,'flow-for-tooltip'); this.forTooltip.id = C.id();
+      this.forTooltip.setAttribute('popover','manual'); this.forTooltip.setAttribute('role','tooltip'); this.root.append(this.forTooltip);
       const preview = el('details', undefined, 'flow-preview'); preview.append(el('summary', 'C++ generato'));
       this.source = el('pre'); this.source.tabIndex = 0; this.source.setAttribute('aria-label', 'Sorgente C++ generato dal diagramma'); preview.append(this.source);
       this.button('Scarica C++ generato', () => { try { this.download(this.getSource().code, 'lezione.cpp', 'text/plain'); } catch {} }, preview);
       this.root.append(preview);
     }
+    chooseKind(kind) {
+      this.kindSelect.value=kind;
+      this.kindSelect.replaceChildren(blockIcon(kind),el('span',C.kinds[kind]),el('span','▾','flow-kind-chevron'));
+    }
+    hideForTooltip() {
+      if(this.forTooltip?.matches(':popover-open'))this.forTooltip.hidePopover();
+    }
+    showForTooltip(anchor,label) {
+      this.forTooltip.textContent=label;
+      if(!this.forTooltip.matches(':popover-open'))this.forTooltip.showPopover();
+      const box=anchor.getBoundingClientRect(), tip=this.forTooltip.getBoundingClientRect();
+      this.forTooltip.style.left=Math.max(8,Math.min(box.left+(box.width-tip.width)/2,window.innerWidth-tip.width-8))+'px';
+      this.forTooltip.style.top=(box.top>tip.height+10?box.top-tip.height-8:box.bottom+8)+'px';
+    }
+    closeKindMenu() {
+      if(this.kindMenu?.matches(':popover-open'))this.kindMenu.hidePopover();
+      this.menuAnchor?.setAttribute('aria-expanded','false');
+    }
+    openKindMenu(anchor, select, point = null, caption = 'Nuovo blocco') {
+      if(this.running)return;
+      this.closeKindMenu(); this.menuAnchor=anchor;
+      this.kindMenu.replaceChildren(el('p',caption,'flow-kind-caption'));
+      for(const [kind,label] of Object.entries(C.kinds)) {
+        const button=this.button('',()=>{this.closeKindMenu();select(kind);if(anchor===this.kindSelect)anchor.focus();},this.kindMenu,'flow-kind-option');
+        button.setAttribute('role','menuitem');button.append(blockIcon(kind),el('span',label));
+      }
+      anchor.setAttribute('aria-expanded','true');anchor.setAttribute('aria-controls',this.kindMenu.id);
+      this.kindMenu.showPopover();
+      const box=anchor.getBoundingClientRect(), menu=this.kindMenu.getBoundingClientRect();
+      const left=point?.x??box.left, below=point?.y??box.bottom;
+      const top=below+8+menu.height<=window.innerHeight?below+8:Math.max(8,(point?.y??box.top)-menu.height-8);
+      this.kindMenu.style.left=Math.max(8,Math.min(left,window.innerWidth-menu.width-8))+'px';
+      this.kindMenu.style.top=top+'px';
+      this.kindMenu.querySelector('[role="menuitem"]')?.focus({preventScroll:true});
+    }
     download(text, filename, type) {
-      const link = el('a'); link.href = URL.createObjectURL(new Blob([text], { type: type + ';charset=utf-8' }));
+      const link = el('a'); link.href = URL.createObjectURL(text instanceof Blob ? text : new Blob([text], { type: type + ';charset=utf-8' }));
       link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+    async exportPng() {
+      this.pngButton.disabled=true;
+      let url;
+      try {
+        const original=this.canvas.querySelector('svg');
+        if(!original)throw new Error('Nessun diagramma da esportare.');
+        const fn=this.document.functions.find(fn=>fn.id===this.fnId);
+        const drawing=original.cloneNode(true), originals=[original,...original.querySelectorAll('*')], copies=[drawing,...drawing.querySelectorAll('*')];
+        const properties=['fill','stroke','stroke-width','stroke-dasharray','stroke-linejoin','stroke-linecap','font-family','font-size','font-weight','text-anchor','paint-order','text-decoration'];
+        originals.forEach((node,index)=>{const style=getComputedStyle(node);for(const property of properties)copies[index].style.setProperty(property,style.getPropertyValue(property));});
+        drawing.querySelectorAll('.flow-edge-hit,.flow-insert-handle,.flow-insert-disc,.flow-insert-plus,title').forEach(node=>node.remove());
+        drawing.querySelectorAll('[tabindex]').forEach(node=>node.removeAttribute('tabindex'));
+        const {width,height}=original.viewBox.baseVal;
+        const scale=Math.min(2,8192/width,8192/height,Math.sqrt(32000000/(width*height)));
+        if(!Number.isFinite(scale)||scale<0.2)throw new Error('Diagramma troppo grande per un PNG leggibile: riduci i blocchi.');
+        drawing.setAttribute('width',width);drawing.setAttribute('height',height);drawing.setAttribute('xmlns','http://www.w3.org/2000/svg');
+        url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(drawing)],{type:'image/svg+xml;charset=utf-8'}));
+        const image=new Image();image.src=url;await image.decode();
+        const canvas=el('canvas');canvas.width=Math.ceil(width*scale);canvas.height=Math.ceil(height*scale);
+        const context=canvas.getContext('2d');if(!context)throw new Error('Esportazione PNG non disponibile nel browser.');
+        context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.scale(scale,scale);context.drawImage(image,0,0,width,height);
+        const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+        if(!blob)throw new Error('Impossibile creare il PNG.');
+        const name=fn.name.replace(/[^A-Za-z0-9_-]/g,'_').slice(0,60)||'diagramma';
+        this.download(blob,'flowchart-'+name+'.png','image/png');this.message('PNG esportato: intero diagramma di '+fn.name+'().');
+      } catch(error) { this.message('Esportazione non riuscita: '+error.message,true); }
+      finally {if(url)URL.revokeObjectURL(url);this.pngButton.disabled=false;}
     }
     message(text, error = false) { this.status.textContent = text; this.status.classList.toggle('flow-error', error); }
     mutate(action, openProperties = false) {
       if (this.running) return;
       const previous = JSON.stringify(this.document);
       try { action(); C.validate(this.document); }
-      catch (error) { this.document = JSON.parse(previous); this.message(error.message, true); return; }
+      catch (error) { this.document = JSON.parse(previous); this.render(); this.message(error.message, true); return; }
       this.history.push(previous); if (this.history.length > 30) this.history.shift();
       this.options.onChange(JSON.stringify(this.document)); this.render();
       if (openProperties) this.functionProps.open = true;
@@ -111,11 +216,13 @@ const FlowchartEditor = (() => {
     }
     setRunning(enabled) { if (this.running !== enabled) { this.running = enabled; this.render(); } }
     clearTrace() { this.traceState = null; this.paintTrace(); }
-    field(parent, caption, value, apply, options = null, hint = '') {
+    field(parent, caption, value, apply, options = null, hint = '', multiline = false) {
       const label = el('label', caption, 'flow-field');
-      const input = options ? this.select(options, caption) : el('input');
+      const input = options ? this.select(options, caption) : el(multiline ? 'textarea' : 'input');
       input.setAttribute('aria-label', caption);
-      if (!options) input.type = 'text'; input.value = value ?? ''; input.disabled = this.running;
+      if (multiline) { input.rows = 4; input.spellcheck = false; }
+      else if (!options) input.type = 'text';
+      input.value = value ?? ''; input.disabled = this.running;
       input.addEventListener('change', () => this.mutate(() => apply(input.value)));
       label.append(input);
       if (hint) {
@@ -130,6 +237,8 @@ const FlowchartEditor = (() => {
       if (found?.fn.id !== fn.id) this.selected = null;
       this.fnSelect.replaceChildren(...this.document.functions.map(f => { const option = el('option', f.name + '()'); option.value = f.id; return option; }));
       this.fnSelect.value = fn.id;
+      this.scopeNote.hidden=this.document.scope!=='cpp';
+      this.root.classList.toggle('flow-running', this.running);
       this.edit.hidden = !this.running;
       for (const control of [this.newButton,this.exampleButton,this.openButton,this.addFunction,this.kindSelect,this.insertion,this.addButton]) control.disabled = this.running;
       this.undoButton.disabled = this.running || !this.history.length;
@@ -138,7 +247,7 @@ const FlowchartEditor = (() => {
     preview() {
       try {
         this.generated = C.generate(this.document); this.source.textContent = this.generated.code;
-        this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : 'Seleziona un blocco oppure aggiungine uno. I collegamenti sono automatici.');
+        this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : 'Clicca su una freccia (+) per inserire un blocco, oppure seleziona un blocco per modificarlo.');
       } catch (error) { this.generated = null; this.source.textContent = error.message; this.message(error.message, true); }
     }
     renderFunction(fn) {
@@ -150,7 +259,7 @@ const FlowchartEditor = (() => {
       this.functionForm.append(fields, el('h4','Parametri, nell’ordine della chiamata'));
       fn.params.forEach((param, index) => {
         const row = el('div', undefined, 'flow-param');
-        this.field(row, `Tipo parametro ${index+1}`, param.type, value => { param.type = value; }, C.types.map(t=>[t,t]));
+        this.field(row, `Tipo parametro ${index+1}`, (param.constant?'const ':'')+param.type, value => { param.constant=value.startsWith('const ');param.type=value.replace(/^const /,''); }, C.types.flatMap(t=>[[t,t],['const '+t,'const '+t]]));
         this.field(row, `Nome parametro ${index+1}`, param.name, value => { param.name = value; });
         this.field(row, `Passaggio parametro ${index+1}`, param.mode, value => { param.mode = value; },
           [['value','Per valore'],['reference','Riferimento &'],['pointer','Puntatore *'],['array','Array []']]);
@@ -180,10 +289,10 @@ const FlowchartEditor = (() => {
         if (Array.isArray(node.body)) positions.push(['body','Nel corpo del ciclo']);
       }
       this.insertion.replaceChildren(...positions.map(([value,text])=>{const option=el('option',text);option.value=value;return option;}));
-      if (!node) { this.inspector.append(el('p',this.running?'Seleziona un blocco per consultarne i campi.':'Il diagramma parte da Inizio. Aggiungi il primo blocco usando i comandi qui sotto.')); return; }
+      if (!node) { this.inspector.append(el('p',this.running?'Seleziona un blocco per consultarne i campi.':'Clicca sulla freccia dopo INIZIO e scegli il blocco da aggiungere, oppure usa i comandi qui sotto.')); return; }
       this.inspector.append(el('h3',C.kinds[node.kind]));
       const fields = el('div',undefined,'flow-field-grid');
-      const field = (caption,key,options=null,hint='') => this.field(fields,caption,node[key],value=>{node[key]=value;},options,hint);
+      const field = (caption,key,options=null,hint='',multiline=false) => this.field(fields,caption,node[key],value=>{node[key]=value;},options,hint,multiline);
       if(node.kind==='declare') {
         field('Tipo','type',C.types.map(t=>[t,t])); field('Nome variabile','name');
         field('Forma','mode',[['value','Variabile / array'],['pointer','Puntatore *'],['reference','Riferimento &']]);
@@ -191,15 +300,21 @@ const FlowchartEditor = (() => {
         field('Valore iniziale (facoltativo)','init',null,'Array: valori separati da virgole, senza parentesi graffe.');
         this.field(fields,'Costante',String(node.constant),value=>{node.constant=value==='true';},[['false','No'],['true','Sì · const']]);
       } else if(node.kind==='input') {
-        field('Destinazione input','target',null,'Una variabile o una cella, per esempio base o v[i].'); field('Domanda nella console (facoltativa)','prompt');
-      } else if(node.kind==='output') field('Espressione da mostrare','expression',null,'Esempio: "Area: " << area');
-      else if(node.kind==='assign') field('Elaborazione','expression',null,'Esempio: area = base * altezza oppure i++.');
+        if(node.grouping==='chain')this.inspector.append(el('p','Lettura C++ concatenata: la console mostra un’unica risposta per le variabili del blocco.','flow-hint'));
+        field('Variabili da leggere','target',null,this.document.scope==='cpp'?'Una variabile o una cella per riga, già dichiarata nel suo ambito C++.':node.mode==='line'?'Una variabile string per riga. Una nuova variabile senza tipo nasce string.':'Una per riga: base, int altezza, string nome oppure v[i]. Una nuova variabile senza tipo nasce double.',true);
+        this.field(fields,'Tipo lettura',node.mode||'token',value=>{node.mode=value;},[['token','Parola o numero · cin'],['line','Riga completa · getline']]);
+        field('Domanda nella console (facoltativa)','prompt');
+      } else if(node.kind==='output') {
+        field('Espressioni da mostrare','expression',null,'Una per riga, per esempio "Area: " e, nella riga successiva, area.',true);
+        field('Fine output','ending',[['OUTLN','OUTLN · vai a capo alla fine'],['OUT','OUT · continua sulla stessa riga']]);
+      } else if(node.kind==='assign') field('Assegnamenti','expression',null,'Uno per riga: area = base * altezza oppure i = i + 1. Una nuova variabile ricava il tipo dal primo assegnamento.',true);
       else if(['if','while','for','do'].includes(node.kind)) {
-        if(node.kind==='for') field('Inizializzazione','init',null,'Esempio: int i = 0');
+        if(node.kind==='for') field('Inizializzazione','init',null,'Esempio: i = 0');
         field('Condizione','condition',null,'Esempio: i < 3 oppure numero > 0');
-        if(node.kind==='for') field('Aggiornamento','update',null,'Esempio: i++');
+        if(node.kind==='for') field('Aggiornamento','update',null,'Esempio: i = i + 1');
         this.inspector.append(el('p',node.kind==='if'?'Seleziona Inserisci nel ramo Vero o Falso per aggiungere i blocchi dei due percorsi.':'Seleziona Inserisci nel corpo del ciclo per aggiungere le istruzioni da ripetere.','flow-hint'));
       } else if(node.kind==='call') {
+        if(node.declareType)field('Tipo del risultato dichiarato','declareType',C.types.map(t=>[t,t]));
         field('Subroutine chiamata','callee',[['','Scegli una subroutine'],...this.document.functions.filter(f=>f.id!=='main').map(f=>[f.id,f.name+'()'])]);
         field('Argomenti','args',null,'Nell’ordine dei parametri; per un indirizzo usa &nome.');
         field('Destinazione risultato (facoltativa)','result',null,'Lascia vuoto per una procedura void.');
@@ -215,45 +330,74 @@ const FlowchartEditor = (() => {
       this.inspector.append(actions);
     }
     addNode() {
-      this.mutate(()=>{
-        const fn=this.document.functions.find(f=>f.id===this.fnId), found=C.locate(this.document,this.selected), where=this.insertion.value;
-        const node=C.newNode(this.kindSelect.value);
-        if(node.kind==='call') node.callee=this.document.functions.find(f=>f.id!=='main')?.id||'';
-        if(where==='after'&&found) found.list.splice(found.index+1,0,node);
-        else if(['then','else','body'].includes(where)&&found&&Array.isArray(found.node[where])) found.node[where].push(node);
-        else fn.body.push(node);
-        this.selected=node.id;
-      });
-      this.inspector.querySelector('input:not(:disabled),select:not(:disabled)')?.focus({preventScroll:true});
+      const fn=this.document.functions.find(f=>f.id===this.fnId), found=C.locate(this.document,this.selected), where=this.insertion.value;
+      let position={fn:fn.id,parent:null,branch:'body',index:fn.body.length};
+      if(where==='after'&&found)position={fn:fn.id,parent:found.parent?.id||null,branch:found.branch,index:found.index+1};
+      else if(['then','else','body'].includes(where)&&found&&Array.isArray(found.node[where]))position={fn:fn.id,parent:found.node.id,branch:where,index:found.node[where].length};
+      this.insertNode(position,this.kindSelect.value);
+    }
+    insertNode(position,kind) {
+      this.mutate(()=>{this.selected=C.insertAt(this.document,position,kind).id;});
+      this.inspector.querySelector('input:not(:disabled),textarea:not(:disabled),select:not(:disabled)')?.focus({preventScroll:true});
+      this.canvas.querySelector(`[data-node="${this.selected}"]`)?.scrollIntoView({block:'nearest',inline:'nearest'});
     }
     renderGraph() {
+      this.closeKindMenu(); this.hideForTooltip();
       const scroll=[this.canvas.scrollLeft,this.canvas.scrollTop]; this.canvas.replaceChildren();
       let graph;
       try { graph=C.layout(this.document,this.fnId); } catch(error) { this.canvas.append(el('p',error.message)); return; }
+      this.graph=graph;
       const scale=document.body.classList.contains('large')?1.2:1;
       const drawing=svg('svg',{viewBox:`0 0 ${graph.width} ${graph.height}`,width:graph.width*scale,height:graph.height*scale,role:'group','aria-label':'Flowchart di '+this.document.functions.find(f=>f.id===this.fnId).name});
       const defs=svg('defs'); const marker=svg('marker',{id:'flow-arrow',viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'});
-      marker.append(svg('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'#60738c'}));defs.append(marker);drawing.append(defs);
-      for(const edge of graph.edges) {
+      marker.append(svg('path',{d:'M 0 0 L 10 5 L 0 10 z',fill:'context-stroke'}));defs.append(marker);drawing.append(defs);
+      for(const [edgeIndex,edge] of graph.edges.entries()) {
         const group=svg('g',{'class':'flow-edge','data-from':edge.from,'data-to':edge.to});
+        group.dataset.edge=edgeIndex;
         if(edge.owner)group.dataset.owner=edge.owner;if(edge.outcome)group.dataset.outcome=edge.outcome;
-        const path=svg('path',{d:edge.points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' '),'marker-end':'url(#flow-arrow)'});group.append(path);
+        const d=edge.points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
+        const path=svg('path',{d,class:'flow-edge-line'});
+        if(!edge.head)path.setAttribute('marker-end','url(#flow-arrow)');
+        else group.dataset.arrow=edge.arrow;
+        group.append(path);
+        if(edge.insertion&&!this.running) {
+          const position=edge.insertion;
+          group.dataset.insertable='true';group.dataset.branch=position.branch;group.dataset.parent=position.parent||'';group.dataset.index=position.index;
+          const caption=position.parent?(position.branch==='body'?'Nel corpo del ciclo':position.branch==='then'?'Nel ramo Vero':'Nel ramo Falso'):`In ${this.document.functions.find(fn=>fn.id===position.fn).name}()`;
+          const description=`Inserisci un blocco · ${caption} · posizione ${position.index+1}`;
+          const segments=edge.points.slice(1).map((end,i)=>({start:edge.points[i],end,length:Math.hypot(end[0]-edge.points[i][0],end[1]-edge.points[i][1])}));
+          const segment=segments.reduce((best,item)=>item.length>best.length?item:best);
+          const cx=(segment.start[0]+segment.end[0])/2,cy=(segment.start[1]+segment.end[1])/2;
+          const handle=svg('circle',{cx,cy,r:12,class:'flow-insert-handle',role:'button',tabindex:0,'aria-label':description,'aria-haspopup':'menu','aria-expanded':'false'});
+          const title=svg('title');title.textContent=description;group.append(title,svg('path',{d,class:'flow-edge-hit'}));
+          const disc=svg('circle',{cx,cy,r:7,class:'flow-insert-disc','aria-hidden':'true'});
+          const plus=svg('text',{x:cx,y:cy+4,class:'flow-insert-plus','text-anchor':'middle','aria-hidden':'true'});plus.textContent='+';group.append(handle,disc,plus);
+          group.addEventListener('click',event=>{event.stopPropagation();this.openKindMenu(handle,kind=>this.insertNode(position,kind),{x:event.clientX,y:event.clientY},caption);});
+          group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();this.openKindMenu(handle,kind=>this.insertNode(position,kind),null,caption);}});
+        }
         if(edge.text){const [x,y]=edge.points[Math.min(1,edge.points.length-1)];const text=svg('text',{x:x+7,y:y-8});text.textContent=edge.text.length>35?edge.text.slice(0,32)+'…':edge.text;group.append(text);}
+        if(edge.head)group.append(svg('polygon',{points:edge.head.map(point=>point.join(',')).join(' '),class:'flow-arrowhead','aria-hidden':'true'}));
         drawing.append(group);
       }
       for(const node of graph.nodes) {
         const group=svg('g',{transform:`translate(${node.x} ${node.y})`,'class':'flow-node '+node.shape,'data-node':node.id,'data-owner':node.owner});
-        const title=svg('title');title.textContent=node.text;group.append(title);
-        let shape;
-        if(node.shape==='decision')shape=svg('polygon',{points:'0,0 120,45 0,90 -120,45'});
-        else if(node.shape==='io')shape=svg('polygon',{points:'-102,0 120,0 102,62 -120,62'});
-        else if(node.shape==='join')shape=svg('circle',{cx:0,cy:6,r:6});
-        else shape=svg('rect',{x:-node.width/2,y:0,width:node.width,height:node.height,rx:node.shape==='terminal'?22:3});
-        group.append(shape);
-        if(node.shape==='call'){group.append(svg('path',{d:'M -108 0 L -108 62 M 108 0 L 108 62','class':'call-bars'}));}
-        const width=node.shape==='decision'?20:28, words=node.text.match(new RegExp('.{1,'+width+'}(?:\\s|$)|.{1,'+width+'}','g'))||[''];
-        const lines=words.slice(0,3);if(words.length>3)lines[2]=lines[2].slice(0,width-1)+'…';
-        if(node.shape!=='join') {
+        if(node.shape!=='for'){const title=svg('title');title.textContent=node.text;group.append(title);}
+        group.append(contour(node.shape,node.width,node.height));
+        if(node.shape==='call'){group.append(svg('path',{d:`M -108 0 L -108 ${node.height} M 108 0 L 108 ${node.height}`,'class':'call-bars'}));}
+        const lines=C.visualLines(node.text,node.shape);
+        if(node.shape==='for') {
+          const text=svg('text',{'text-anchor':'middle',y:node.height/2+4});
+          node.parts.forEach((part,index)=>{
+            if(index){const separator=svg('tspan');separator.textContent='; ';text.append(separator);}
+            const span=svg('tspan',{class:'flow-for-part','data-for-part':part.key,tabindex:0,role:'img','aria-label':part.label+': '+part.text,'aria-describedby':this.forTooltip.id});
+            span.textContent=part.text;
+            span.addEventListener('pointerenter',()=>this.showForTooltip(span,part.label));
+            span.addEventListener('focus',()=>this.showForTooltip(span,part.label));
+            span.addEventListener('pointerleave',()=>{if(document.activeElement!==span)this.hideForTooltip();});
+            span.addEventListener('blur',()=>this.hideForTooltip());
+            text.append(span);
+          });group.append(text);
+        } else if(node.shape!=='join') {
           const text=svg('text',{'text-anchor':'middle',y:node.height/2-(lines.length-1)*8+4});
           lines.forEach((line,index)=>{const span=svg('tspan',{x:0,dy:index?16:0});span.textContent=line.trim();text.append(span);});group.append(text);
         }
@@ -266,28 +410,55 @@ const FlowchartEditor = (() => {
       }
       this.canvas.append(drawing);this.canvas.scrollLeft=scroll[0];this.canvas.scrollTop=scroll[1];this.paintTrace();
     }
-    showTrace(trace,index,showConditions) {
-      if(!this.generated||!trace.length)return this.clearTrace();
+    pointAt(trace,index) {
       const step=trace[index], current=step.frames.at(-1);let point=this.generated.lineMap[step.line];
       if(step.event==='fine')point={fn:'main',node:'main:end'};
       else if(step.event==='ritorno implicito'&&point)point={...point,node:point.fn+':end'};
+      else if(step.event==='ritorno'&&C.locate(this.document,point?.node)?.node.kind==='return')point={...point,node:point.fn+':end'};
       else if(step.event.startsWith('uscita da ')) {
         if(!current)point={fn:'main',node:'main:end'};
         else for(let i=index-1;i>=0;i--){const candidate=this.generated.lineMap[trace[i].line];if(trace[i].frames.at(-1)?.id===current.id&&candidate?.functionName===current.name){point=candidate;break;}}
       }
+      return point?{...point,frame:current?.id||0}:null;
+    }
+    routeAt(trace,index,point) {
+      const current=trace[index];
+      for(let i=index-1;i>=0;i--) {
+        const previous=this.pointAt(trace,i);if(!previous)continue;
+        if(previous.fn!==point.fn||previous.frame!==point.frame)return [];
+        if(previous.node===point.node) {
+          const condition=trace[i].condition;
+          if(current.condition?.action==='test'&&condition?.action==='test'&&current.condition.number!==condition.number)
+            return C.pathBetween(this.graph,point.node,point.node,condition.result);
+          continue;
+        }
+        let outcome=null;
+        for(let j=i;j>=0;j--){const source=this.pointAt(trace,j);if(source?.node!==previous.node||source.frame!==point.frame)break;
+          const condition=trace[j].condition;if(condition?.action==='test'){outcome=condition.result;break;}}
+        return C.pathBetween(this.graph,previous.node,point.node,outcome);
+      }
+      return [];
+    }
+    showTrace(trace,index,showConditions) {
+      if(!this.generated||!trace.length)return this.clearTrace();
+      const step=trace[index], current=step.frames.at(-1), point=this.pointAt(trace,index);
       if(!point)return this.clearTrace();
       const previous=trace[index-1];
       const condition=showConditions?(step.condition||(!step.error&&step.event==='prima'&&previous?.condition?.frame===current?.id?previous.condition:null)):null;
-      this.traceState={point,condition};
-      if(this.fnId!==point.fn){this.fnId=point.fn;this.selected=null;this.render();}else this.paintTrace();
+      this.traceState={point,condition,route:[]};
+      if(this.fnId!==point.fn){this.fnId=point.fn;this.selected=null;this.render();}
+      this.traceState.route=this.routeAt(trace,index,point);this.paintTrace();
       const target=this.canvas.querySelector(`[data-node="${point.node}"]`);
-      if(target){const box=target.getBBox(), svg_=target.ownerSVGElement;const scale=svg_.getBoundingClientRect().width/svg_.viewBox.baseVal.width;const top=(Number(target.getAttribute('transform').split(' ')[1]?.replace(')',''))||0)*scale;
-        if(top<this.canvas.scrollTop||top+box.height*scale>this.canvas.scrollTop+this.canvas.clientHeight)this.canvas.scrollTop=Math.max(0,top-this.canvas.clientHeight/3);}
+      if(target){const box=target.getBBox(), svg_=target.ownerSVGElement;const scale=svg_.getBoundingClientRect().width/svg_.viewBox.baseVal.width;
+        const transform=target.transform.baseVal.consolidate().matrix, top=transform.f*scale, left=(transform.e+box.x)*scale;
+        if(top<this.canvas.scrollTop||top+box.height*scale>this.canvas.scrollTop+this.canvas.clientHeight)this.canvas.scrollTop=Math.max(0,top-this.canvas.clientHeight/3);
+        if(left<this.canvas.scrollLeft||left+box.width*scale>this.canvas.scrollLeft+this.canvas.clientWidth)this.canvas.scrollLeft=Math.max(0,left-(this.canvas.clientWidth-box.width*scale)/2);}
     }
     paintTrace() {
-      this.canvas.querySelectorAll('.flow-active,.flow-true,.flow-false,.flow-chosen').forEach(node=>node.classList.remove('flow-active','flow-true','flow-false','flow-chosen'));
+      this.canvas.querySelectorAll('.flow-active,.flow-true,.flow-false,.flow-chosen,.flow-traversed').forEach(node=>node.classList.remove('flow-active','flow-true','flow-false','flow-chosen','flow-traversed'));
       if(!this.traceState)return;
       const {point,condition}=this.traceState;
+      if(point.fn===this.fnId)for(const index of this.traceState.route||[])this.canvas.querySelector(`[data-edge="${index}"]`)?.classList.add('flow-traversed');
       this.canvas.querySelector(`[data-node="${point.node}"]`)?.classList.add('flow-active');
       const conditionPoint=condition&&this.generated?.lineMap[condition.line];
       if(conditionPoint?.fn===this.fnId&&condition.action==='test') {

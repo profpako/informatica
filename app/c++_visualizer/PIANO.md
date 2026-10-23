@@ -392,16 +392,17 @@ valutazioni aggiuntive. Riavviato il server abituale in sessione indipendente.
   - [x] Dichiarazioni scalari/array/puntatori/riferimenti, input, output, elaborazione.
   - [x] Decisioni Vero/Falso, while, for, do…while, break/continue e restituzione.
   - [x] Funzioni/procedure con parametri per valore, riferimento, puntatore e array.
-- [ ] Aggiungere editor grafico con forme standard, frecce automatiche, selezione e campi modificabili.
-  - [ ] Inserimento nei rami/corpi, riordino, cancellazione e annullamento.
-  - [ ] Proprietà delle subroutine e selezione del diagramma da osservare.
-  - [ ] Apri/Salva documento JSON, autosalvataggio separato e anteprima C++.
-- [ ] Integrare modalità C++/Flowchart con il medesimo avvio e input.
-  - [ ] Proteggere il sorgente C++ del docente passando da una modalità all'altra.
-  - [ ] Evidenziare blocco corrente e rami Vero/Falso seguendo la traccia nativa.
-  - [ ] Mantenere memoria, console, fotografie e collegamenti dei parametri.
-- [ ] Verificare generatore/layout, import non valido, programmi generati con Clang e percorso nel browser.
-- [ ] Aggiornare documentazione, riavviare il server stabile e consegnare anteprima.
+- [x] Aggiungere editor grafico con forme standard, frecce automatiche, selezione e campi modificabili.
+  - [x] Inserimento nei rami/corpi, riordino, cancellazione e annullamento.
+  - [x] Proprietà delle subroutine e selezione del diagramma da osservare.
+  - [x] Apri/Salva documento JSON, autosalvataggio separato e anteprima C++.
+- [x] Integrare modalità C++/Flowchart con il medesimo avvio e input.
+  - [x] Proteggere il sorgente C++ del docente passando da una modalità all'altra.
+  - [x] Evidenziare blocco corrente e rami Vero/Falso seguendo la traccia nativa.
+  - [x] Mantenere memoria, console, fotografie e collegamenti dei parametri.
+- [x] Verificare generatore/layout, import non valido nei test, programmi generati con Clang e percorso nel browser.
+- [x] Aggiornare documentazione e riavviare il server stabile.
+- [ ] Riapertura del file e anteprima finale nel browser: automazione interrotta dall'estensione.
 
 Accettazione: costruire senza scrivere il sorgente C++ un programma con input,
 calcolo e output; aggiungere una decisione/ciclo e una chiamata con parametri;
@@ -421,11 +422,11 @@ fuori da questa prima integrazione.
 ### Revisione richiesta: sintassi simile ad AlgoBuild
 
 - [x] Consultare il manuale ufficiale: istruzioni semplici, cicli, tipi e operatori.
-- [ ] Ricevere conferma su input/output/assegnamenti su più righe e OUT/OUTLN.
+- [x] Ricevere conferma su input/output/assegnamenti su più righe e OUT/OUTLN.
 - [x] Individuare la soluzione richiesta: supportare sia dichiarazioni esplicite sia creazione implicita.
-- [ ] Confermare tipo dell'input implicito, stabilità del tipo e ambito delle variabili.
-- [ ] Concordare successivamente sintassi e comportamento di cicli, array e parametri.
-- [ ] Adattare editor, generatore, esempi e verifiche alle scelte confermate.
+- [x] Confermare tipo dell'input implicito, stabilità del tipo e ambito delle variabili.
+- [x] Concordare sintassi e comportamento di cicli, array e parametri.
+- [x] Adattare editor, generatore, esempi e verifiche alle scelte confermate.
 
 Il docente ha chiesto conferma sulle varie scelte prima di procedere. Sospesa la
 modifica della sintassi e la consegna della versione iniziale. L'editor attuale usa
@@ -452,3 +453,188 @@ in assenza di dichiarazione, il primo assegnamento lo ricava dall'espressione e
 l'input usa un tipo predefinito o specificato sulla singola riga. Nessun cambiamento
 automatico del tipo dopo la creazione. Da concordare anche la visibilità dopo rami
 e cicli, perché influenza la durata mostrata nella memoria.
+
+### Esecuzione delle proposte confermate
+
+Il docente ha confermato la tabella completa: INPUT su più righe (double se nuovo
+e privo di tipo, oppure int/string/etc esplicito), assegnamenti su più righe,
+OUT/OUTLN, operatori C++, for in tre campi, variabili locali all'intera subroutine,
+array tipizzati e dimensionati, parametri con semantica C++.
+
+- [x] Generatore: righe multiple, tipo dedotto dal primo assegnamento, input tipizzato,
+  tipo stabile, risultato di funzione implicito e dichiarazioni esplicite.
+- [x] Durata: estendere all'intera subroutine le variabili create dentro rami/cicli,
+  mostrandole soltanto quando il relativo percorso le crea; controllare letture
+  prima dell'inizializzazione e rami non percorsi.
+- [x] Editor: campi multilinea, OUT/OUTLN, suggerimenti ed esempio senza dichiarazioni
+  obbligatorie; mantenere leggibili i blocchi e riconoscere i vecchi diagrammi JSON.
+- [x] Verifiche: generazione, tipi numerici/stringa, rami e cicli, funzioni/puntatori,
+  console, limiti e regressioni C++; prova nel browser su origine separata.
+- [x] Guida e documentazione e riavvio del server locale.
+- [ ] Acquisire l'anteprima finale: controllo del browser non più disponibile.
+
+Punti raggiunti dal cambiamento: core/editor Flowchart, chiamante app.js, metadati
+opzionali dell'API locale, strumentazione e runtime solo per dichiarazioni differite,
+test e documentazione. Il sorgente C++ del docente e la sua modalità restano distinti.
+Si riusano compilatore, analisi dei ruoli e tracciamento nativi, evitando un secondo
+interprete delle espressioni. Il compilatore determina i tipi senza eseguire due volte
+le espressioni. Le dichiarazioni tecniche anticipate per dare durata di subroutine
+non devono generare passi o variabili visibili prima della loro creazione logica.
+
+Verifica del 2026-10-23: suite di 53 test superata in 116,3 secondi, poi verifiche
+aggiuntive di chiamate non rivalutate, stringhe non create, alias di stringhe e
+input in un ramo: 57 casi distinti complessivamente coperti. Dopo l'aggiunta del
+controllo delle stringhe, 9/10 casi flowchart passati al primo giro; un caso già
+passato si è fermato per timeout ed è passato ripetendolo insieme al nuovo input
+stringa/intero (2 test in 4 secondi), senza alzare i limiti del motore. Nessuna
+modifica alla semantica di stringhe/riferimenti nel C++ ordinario. Node verifica
+generazione, JSON vecchio/nuovo, formato non valido, tipi stabili, array e layout;
+controlli sintattici JS e diff --check superati.
+
+In Chrome su origine separata: creato senza sorgente C++ un programma con INPUT
+multilinea (base double, altezza int), due assegnamenti (area double, contatore int),
+OUT senza a capo e OUTLN con a capo, for/if annidati e passaggio creato solo nel
+ramo Vero. Verificati esiti/percorsi Vero/Falso e flag senza riesecuzione, variabile
+conservata dopo il ciclo, contatore finale 2, output finale «Dopo il ciclo: 25 / 0 / 2»,
+autosave al ricaricamento e codice/input C++ intatti passando fra modalità.
+Riordino, eliminazione e Annulla ripristinano il sorgente generato. Salva diagramma
+ha prodotto lezione.flow.json nel browser (formato 2 e input multilinea verificati
+sul file scaricato). L'evento di download dell'automazione non ha restituito il
+percorso; il download effettivo è riuscito. Apri diagramma non verificabile nella
+UI: l'estensione richiede accesso ai file locali; il controllo si è poi interrotto.
+Non sono stati cambiati i permessi di Chrome e non è disponibile una nuova immagine
+finale. Le prove precedenti hanno controllato selezione, forme e colori a schermo.
+
+Limite esplicito e documentato: array, costanti e riferimenti si dichiarano nel
+corpo principale della subroutine, prima di rami/cicli. Gli scalari e i puntatori
+possono nascere nei rami/cicli e durano fino al ritorno. La sintassi è simile ad
+AlgoBuild ma il formato JSON è proprio del visualizzatore. Aggiornati README,
+guida, COSTRUTTI e PROGETTO. Server stabile riavviato, PID 33123 sulla porta 8765.
+Il checkpoint GitHub 2116c62 precede questa revisione; questa sezione ne registra le verifiche.
+
+## Inserimento dalle frecce e forme dei blocchi
+
+- [x] Associare alle frecce un punto di inserimento nella sequenza, nel ramo o nel corpo del ciclo corretti.
+  - [x] Inizio/Fine, collegamenti fra blocchi, rami vuoti/popolati e ritorno del ciclo.
+  - [x] Riutilizzare la stessa operazione di inserimento per palette e frecce; mantenere Annulla e autosalvataggio.
+- [x] Aprire sulla freccia un menu con nome e miniatura SVG di ogni blocco.
+  - [x] Mostrare le miniature anche nel dropdown Nuovo blocco della palette.
+  - [x] Rendere frecce e menu utilizzabili da tastiera, chiudibili con Escape e inattivi durante la traccia.
+- [x] Disegnare il for come esagono allungato, con inizializzazione, condizione e incremento su righe distinte.
+  - [x] Adattare misure, frecce, scorrimento e colori delle condizioni.
+- [x] Scrivere INIZIO nome() e FINE nome() negli ovali di ciascuna subroutine.
+- [x] Verificare posizioni di inserimento e layout nei test; provare menu ed esecuzione nel browser.
+- [x] Aggiornare guida/documentazione e consegnare l'anteprima se il controllo Chrome è disponibile.
+
+Ambito: layout/core Flowchart, editor SVG, menu dei blocchi, stile, test e guida.
+Nessuna modifica a compilazione, runtime C++, API o documenti salvati. I collegamenti
+di salto return/break/continue non rappresentano una nuova istruzione da eseguire
+fra salto e destinazione; l'inserimento avviene sulle frecce delle sequenze strutturate.
+Non sono richieste dipendenze esterne. Il generatore C++ e la semantica restano quelli
+già verificati; il nuovo for cambia rappresentazione, non esecuzione.
+
+Richieste aggiuntive durante la verifica:
+- [x] Rinominare Decisione in IF e usare FOR, WHILE, DO...WHILE nei menu e nelle proprietà.
+- [x] Rendere esplicita l'uscita verticale dal vertice basso del WHILE anche a corpo vuoto.
+- [x] Verificare l'ingresso verticale nel vertice alto del DO...WHILE, vuoto e popolato.
+- [x] Ridurre il cerchio visibile del + mantenendo un'area di clic più ampia e le punte delle frecce leggibili.
+
+Verifica del 2026-10-23: Node verifica inserimento da inizio/fine, fra blocchi,
+rami vuoti/popolati, in testa e in coda al corpo, uscita Falso del ciclo, sottoprogrammi,
+posizioni non valide e rollback al limite di 200 blocchi; controllo di punti di
+attacco, esagono a misure dinamiche e presenza dei tre campi anche con testi lunghi.
+Verificati uscita inferiore WHILE e ingresso superiore DO...WHILE con corpi vuoti
+e popolati. Il C++ generato non cambia passando dal layout. Node --check e
+git diff --check superati. Motore/API/runtime non modificati in questo intervento.
+
+Chrome su origine separata: costruiti programmi cliccando solo le frecce; provati
+menu con 12 icone, scelta dalla palette, tastiera (Invio, frecce, End, Escape),
+Annulla e autosave al ricaricamento. Eseguiti FOR con somma finale 3, rami Vero/Falso
+e output «Ramo vero / 0 / 1 / 2 / 3», poi WHILE e DO...WHILE nella procedura cicli()
+con fotografia finale n=1. Il diagramma segue chiamata e ritorno; le frecce di
+inserimento scompaiono durante la traccia. Verificati IF/FOR/WHILE/DO...WHILE e cerchi
+visibili di raggio 7 con bersaglio trasparente di raggio 12. Esagono verde e testi
+leggibili controllati a schermo. Anteprime: flowchart-frecce-menu.png,
+flowchart-for-esagono.png e flowchart-while-do.png. Nei log Chrome sono comparsi
+messaggi di chiusura del canale asincrono di provenienza non verificata, che non
+hanno impedito le prove sopra; un controllo conclusivo su Home si è poi fermato
+per timeout del controllo browser. La suite C++ completa non è stata ripetuta:
+modifiche a editor/layout e verifica di esecuzione direttamente nel browser.
+
+Aggiornati README, guida e PROGETTO. Basta ricaricare il visualizzatore; il server
+abituale resta il PID 33123 sulla porta 8765. Nessun riavvio o pubblicazione GitHub
+eseguito per questo intervento.
+
+## Frecce esplicite e FOR su una riga con tooltip
+
+- [x] Rendere visibili le punte verticali: WHILE dal vertice basso, DO...WHILE verso il vertice alto.
+  - [x] Usare punte SVG esplicite per questi collegamenti e lasciare spazio fra punta e +.
+  - [x] Verificare corpo vuoto/popolato e fase di esecuzione.
+- [x] Mostrare nel FOR «inizializzazione; condizione; incremento» su un'unica riga.
+  - [x] Rimuovere le tre etichette dal testo e adattare la larghezza dell'esagono.
+  - [x] Aggiungere tre porzioni con tooltip distinti, visibili su mouse/focus.
+- [x] Verificare layout, punto di attacco delle frecce e metadati dei tooltip nei test.
+- [x] Provare il risultato nel browser, acquisire anteprime e aggiornare guida/README.
+
+Evidenza: il layout precedente collega i vertici ma mostra soltanto la punta a fine
+tratto con un marker SVG. Il WHILE non ha una punta immediatamente sotto il rombo;
+i comandi di inserimento condividono lo stesso breve tratto. Si rendono esplicite
+le punte richieste, senza cambiare semantica né posizioni di inserimento. Intervento
+limitato a layout, renderer, stile, test e documentazione; nessun cambiamento al
+generatore C++, all'API o ai documenti del docente.
+
+### Richieste durante la correzione
+
+- [x] Aggiungere velocità di riproduzione regolabile, ricordata e modificabile durante l'animazione.
+- [x] Evidenziare le frecce realmente attraversate tra blocchi, anche con Mostra condizioni spento.
+  - [x] Distinguere percorsi IF/WHILE/FOR/DO...WHILE, raccordi, salti e chiamate.
+- [x] Esportare in PNG l'intero diagramma della subroutine scelta, con testo e colori.
+  - [x] Escludere i controlli di modifica dal PNG, validare dimensioni e gestire gli errori.
+- [x] Chiarire la conversione: Flowchart→C++ già presente; richiesta al docente la scelta sull'importazione C++→Flowchart.
+
+Nuovo ambito: controlli di riproduzione in app/index, renderer/core per i percorsi,
+esportazione locale SVG→canvas→PNG e CSP immagini blob. Nessun servizio remoto.
+La conversione C++→Flowchart è stata confermata dal docente ed è inclusa qui sotto.
+
+Confermata dal docente anche la conversione C++→Flowchart:
+- [x] Importare tramite AST di Clang funzioni, parametri, dichiarazioni, console,
+  assegnamenti, IF, FOR, WHILE, DO...WHILE, chiamate, return/break/continue.
+- [x] Conservare ambiti C++ nei diagrammi importati (dichiarazioni nel blocco e
+  contatore locale al FOR), distinguendoli dai diagrammi scritti in stile AlgoBuild.
+- [x] Aggiungere API locale autenticata e pulsante nell'editor C++; conservare il
+  sorgente e rendere annullabile la sostituzione del diagramma precedente.
+- [x] Rifiutare con riga e spiegazione i costrutti non rappresentabili, evitando
+  conversioni parziali o cambi di significato; verificare equivalenza nei test.
+
+L'importazione iniziale non include globali/statiche, switch, overload o parametri
+con valore predefinito. Gli errori non sostituiscono né sorgente né diagramma.
+
+Pubblicazione richiesta dal docente: al termine delle verifiche, commit e push sul ramo main.
+Il risultato della pubblicazione verrà comunicato con il relativo hash Git.
+
+
+Verifica conclusiva del 2026-10-23:
+- Suite completa conclusiva: 67 test Python superati in 114,702 secondi
+  (motore C++, ruoli, server, Flowchart e importazione); include const, nome endl,
+  console, ambiti e cin concatenato. Anche il controllo mirato di 25 test è passato.
+- Suite Node superata per generazione, validazione, inserimenti, layout, tooltip,
+  punte esplicite e percorsi. Controlli sintattici JS e git diff --check superati.
+- Chrome: FOR su una riga con tre tooltip su focus; WHILE/DO con punte esplicite;
+  frecce attraversate anche a condizioni spente, rami vuoti, ritorni e ciclo vuoto.
+  Velocità modificata durante la riproduzione e ricordata al ricaricamento.
+- Esportato e ispezionato un PNG reale di 1080×2378 pixel: tutto il diagramma,
+  frecce e testo leggibili, senza controlli di inserimento. Verificato anche il PNG
+  della funzione in esecuzione. Anteprime: flowchart-for-tooltip.png,
+  flowchart-esportato.png e flowchart-percorso.png.
+- Chrome: importazione area() e main(), annullamento della sostituzione, conservazione
+  del sorgente; rifiuto di globali con riga e diagramma precedente conservato.
+  Esecuzione importata: console «4 6\nArea: 24\n»; b/h copiati nella funzione,
+  risultato a assente durante il calcolo e creato al ritorno.
+- Formato documenti versione 3: migrazione 1/2, scope C++ per gli importati,
+  getline e cin concatenato conservati. Nessuna dipendenza o servizio aggiunto.
+- Server abituale riavviato sulla porta 8765 (PID 36463). Verificata via API locale
+  l'intera conversione/generazione/esecuzione e la CSP per l'esportazione PNG.
+
+Le precedenti caselle sulla riapertura di file dal browser restano annotazioni
+storiche di prove impedite dall'estensione; validazione, migrazione e round-trip JSON
+sono coperti dai test. Le nuove anteprime sopra sostituiscono quelle provvisorie.

@@ -10,7 +10,7 @@ import tempfile
 from roles import classify_roles
 
 ROOT = Path(__file__).resolve().parent
-HEADERS = {"iostream", "string", "iomanip"}
+HEADERS = {"iostream", "string", "iomanip", "type_traits"}
 TOKENS = re.compile(r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[A-Za-z_]\w*|::|\S')
 
 
@@ -42,9 +42,9 @@ def prepare(code):
         raise CodeError("Continuazioni di riga del preprocessore e trigrafi non supportati.")
     clean = re.sub(r'//[^\n]*|/\*[\s\S]*?\*/', lambda m: re.sub(r"[^\n]", " ", m[0]), code)
     for match in re.finditer(r"^\s*#([^\n]*)", clean, re.M):
-        directive = re.fullmatch(r"include\s*<([a-z]+)>\s*", match[1].strip())
+        directive = re.fullmatch(r"include\s*<([a-z_]+)>\s*", match[1].strip())
         if not directive or directive[1] not in HEADERS:
-            raise CodeError("Sono ammessi solo #include <iostream>, <string> e <iomanip>. Altre direttive non supportate.")
+            raise CodeError("Sono ammessi solo #include <iostream>, <string>, <iomanip> e <type_traits>. Altre direttive non supportate.")
     source = re.sub(r"^[ \t]*#[^\n]*", "", code, flags=re.M)
     tokens = list(TOKENS.finditer(source))
     edits = []
@@ -57,15 +57,24 @@ def prepare(code):
                 edits.append((match.start(), match.end(), "::__cv_user::"))
     for a, b, replacement in reversed(edits):
         source = source[:a] + replacement + source[b:]
-    prefix = '#include <iostream>\n#include <string>\n#include <iomanip>\nnamespace __cv_user {\n'
+    prefix = '#include <iostream>\n#include <string>\n#include <iomanip>\n#include <type_traits>\nnamespace __cv_user {\n'
     return (prefix + source + '\n}\n').encode(), prefix.count("\n")
 
 
 class Instrumenter:
-    def __init__(self, source, prefix_lines, tree):
+    def __init__(self, source, prefix_lines, tree, deferred=None):
         self.source = source
         self.prefix_lines = prefix_lines
         self.tree = tree
+        self.deferred = deferred or {}
+        self.activations = {}
+        for node in walk(tree):
+            t = node.get('type', {})
+            if 'decltype(' in t.get('qualType', '') and t.get('desugaredQualType'):
+                t['qualType'] = t['desugaredQualType'].replace('std::basic_string<char>', 'std::string')
+            descriptor = self.deferred.get(self.line(node)) if node.get('kind') == 'VarDecl' else None
+            if descriptor and descriptor.get('activate'):
+                self.activations.setdefault(descriptor['activate'], []).append(node)
         self.serial = 0
         self.functions = {n["id"] for n in tree.get("inner", []) if n.get("kind") == "FunctionDecl"}
         definitions = {n.get('mangledName', n['name']): n for n in tree.get('inner', [])
@@ -166,12 +175,13 @@ class Instrumenter:
             self.error(node, "assegna un nome a ogni parametro della definizione.")
         t = node["type"]["qualType"]
         persistent = global_scope or node.get("storageClass") == "static"
-        init = bool(node.get("init") or persistent or node["kind"] == "ParmVarDecl" or "string" in t)
+        delayed = node['kind'] == 'VarDecl' and self.line(node) in self.deferred
+        init = not delayed and bool(node.get("init") or persistent or node["kind"] == "ParmVarDecl" or "string" in t)
         label = function + "::" + name if persistent and function else name
         storage = "static " if node.get("storageClass") == "static" and not global_scope else ""
         return (f'{storage}auto {self.unique()} = cv::watch({json.dumps(label)}, {json.dumps(t)}, {name}, '
                 f'{str(init).lower()}, {str("&" in t).lower()}, {str(persistent).lower()}, '
-                f'{node["loc"]["offset"]}, {str(node["kind"] == "ParmVarDecl").lower()});')
+                f'{node["loc"]["offset"]}, {str(node["kind"] == "ParmVarDecl").lower()}, {str(not delayed).lower()});')
 
     def argument_source(self, node):
         """Collegare solo celle identificabili senza eseguire di nuovo l'argomento."""
@@ -188,18 +198,27 @@ class Instrumenter:
             return self.argument_source(inner[0])
         return {}
 
-    def expression(self, node):
+    def expression(self, node, writing=False):
         if not bounds(node):
             return ""
         kind, children, line = node["kind"], node.get("inner", []), self.line(node)
         captured = f', {bounds(node)[0]}, {bounds(node)[1]}' if self.condition_capture else ''
+        operator = next((n.get('referencedDecl', {}).get('name') for n in walk(children[0])
+                         if n.get('referencedDecl', {}).get('name', '').startswith('operator')), '') if kind == 'CXXOperatorCallExpr' and children else ''
+        if operator == 'operator=' and len(children) == 3 and 'string' in children[1].get('type', {}).get('qualType', ''):
+            lhs, rhs = self.expression(children[1], True), self.expression(children[2])
+            return f'cv::assign([&](){{return ({rhs});}}, [&]() -> decltype(auto) {{return ({lhs});}})'
+        if self.deferred and kind == 'DeclRefExpr' and not writing and 'string' in node.get('type', {}).get('qualType', ''):
+            declaration = self.declarations.get(node.get('referencedDecl', {}).get('id'))
+            if declaration:
+                return f'cv::checked(({self.text(node)}), {line}{captured})'
         if kind == "ImplicitCastExpr" and node.get("castKind") == "LValueToRValue":
             return f'cv::read(({self.expression(children[0])}), {line}{captured})'
         if kind == "ArraySubscriptExpr":
             return f'cv::at(({self.expression(children[0])}), ({self.expression(children[1])}), {line})'
         if kind == "UnaryOperator":
             op = node.get("opcode")
-            expr = self.expression(children[0])
+            expr = self.expression(children[0], writing or op == '&')
             if op in {"++", "--"}:
                 return f'cv::{"post" if node.get("isPostfix") else "pre"}(({expr}), {1 if op == "++" else -1}, {line}{captured})'
             if op == "*":
@@ -207,7 +226,7 @@ class Instrumenter:
         if kind in {"BinaryOperator", "CompoundAssignOperator"}:
             op = node.get("opcode", "")
             if op == "=" or kind == "CompoundAssignOperator":
-                lhs, rhs = [self.expression(c) for c in children]
+                lhs, rhs = self.expression(children[0], True), self.expression(children[1])
                 args = f'[&](){{return ({rhs});}}, [&]() -> decltype(auto) {{return ({lhs});}}'
                 if op == "=":
                     return f'cv::assign({args})'
@@ -215,7 +234,12 @@ class Instrumenter:
         # No transformar operandos de sizeof: son expresiones no evaluadas.
         if kind == "UnaryExprOrTypeTraitExpr":
             return self.text(node)
-        changes = [(c, self.expression(c)) for c in children if bounds(c)]
+        changes = []
+        for index, child in enumerate(children):
+            if not bounds(child):
+                continue
+            rendered_child = self.expression(child, writing or operator == 'operator>>' and index == len(children) - 1)
+            changes.append((child, rendered_child))
         # Los elementos explícitos de una inicialización parcial están en array_filler.
         changes.extend((c, self.expression(c)) for c in node.get("array_filler", []) if bounds(c))
         rendered = self.splice(node, changes)
@@ -235,7 +259,7 @@ class Instrumenter:
                 if any(n.get("opcode") in {"++", "--", "="} for n in walk(target)):
                     self.error(target, "usa un indice senza effetti collaterali nel target di input.")
                 formatted = str("operator>>" in refs).lower()
-                rendered = f'cv::input([&]() -> std::istream& {{return ({rendered});}}, ({self.expression(target)}), {line}, {formatted})'
+                rendered = f'cv::input([&]() -> std::istream& {{return ({rendered});}}, ({self.expression(target, True)}), {line}, {formatted})'
             function = next((self.definitions.get(n.get('referencedDecl', {}).get('id')) for n in walk(children[0])
                              if self.definitions.get(n.get('referencedDecl', {}).get('id'))), None)
             if function:
@@ -287,9 +311,13 @@ class Instrumenter:
     def statement(self, node, function="", before=True):
         kind, children, line = node.get("kind"), node.get("inner", []), self.line(node)
         prefix = f'cv::step({line});' if before else ""
+        prefix += ''.join(f'cv::activate(&{var["name"]}, {str("string" in var["type"]["qualType"]).lower()});'
+                          for var in self.activations.get(line, []))
         if kind == "CompoundStmt":
             return "{" + "".join(self.statement(c, function) for c in children) + "}"
         if kind == "DeclStmt":
+            if line in self.deferred:
+                return self.declaration(node, function)
             return prefix + self.declaration(node, function) + f'cv::step({line}, "dichiarazione");'
         if kind == "ForStmt":
             if len(children) != 5 or children[1]:
@@ -403,7 +431,7 @@ def sandbox_profile(folder, clang_resources):
             '(allow file-write* (subpath ' + json.dumps(str(folder)) + '))\n')
 
 
-def run_program(code, user_input=""):
+def run_program(code, user_input="", flow=None):
     if not isinstance(user_input, str) or len(user_input.encode()) > 10000:
         raise CodeError("Input troppo lungo: massimo 10.000 byte.")
     compiler = shutil.which("clang++")
@@ -411,6 +439,17 @@ def run_program(code, user_input=""):
     if not compiler or not sandbox:
         raise CodeError("Questa versione richiede macOS, clang++ e sandbox-exec. Installa gli strumenti da riga di comando di Xcode.")
     source, prefix_lines = prepare(code)
+    deferred = {}
+    if flow is not None:
+        if not isinstance(flow, dict) or set(flow) != {'deferred'} or not isinstance(flow['deferred'], list) or len(flow['deferred']) > 200:
+            raise CodeError('Metadati flowchart non validi.')
+        maximum = code.count('\n') + 1
+        for descriptor in flow['deferred']:
+            if (not isinstance(descriptor, dict) or not {'line'} <= set(descriptor) <= {'line', 'activate'}
+                    or any(type(value) is not int or not 1 <= value <= maximum for value in descriptor.values())
+                    or descriptor['line'] in deferred):
+                raise CodeError('Dichiarazione differita del flowchart non valida.')
+            deferred[descriptor['line']] = descriptor
     with tempfile.TemporaryDirectory(prefix="cppviz-", dir="/private/tmp") as folder:
         directory = Path(folder)
         path = directory / "lezione.cpp"
@@ -422,7 +461,7 @@ def run_program(code, user_input=""):
             if parsed.returncode:
                 raise CodeError(diagnostic(parsed.stderr, path, prefix_lines))
             tree = json.loads(parsed.stdout)
-            instrumenter = Instrumenter(source, prefix_lines, tree)
+            instrumenter = Instrumenter(source, prefix_lines, tree, deferred)
             generated = instrumenter.build()
             roles = classify_roles(tree)
             instrumented = directory / "osservato.cpp"

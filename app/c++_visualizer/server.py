@@ -7,6 +7,7 @@ import secrets
 from urllib.parse import urlsplit
 
 from engine import CodeError, run_program
+from flowchart_import import import_flowchart
 
 ROOT = Path(__file__).resolve().parent
 TOKEN = secrets.token_urlsafe(32)
@@ -24,7 +25,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.send_header('Cross-Origin-Resource-Policy', 'same-origin')
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
         self.end_headers()
         try:
             self.wfile.write(data)
@@ -49,7 +50,7 @@ class Handler(BaseHTTPRequestHandler):
         origins = {f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}'}
         if not self.valid_host() or self.headers.get('Origin') not in origins or not secrets.compare_digest(self.headers.get('X-Visualizer-Token', ''), TOKEN):
             return self.send(403, {'error': 'Richiesta non autorizzata. Ricarica la pagina locale.'})
-        if self.path != '/api/run':
+        if self.path not in {'/api/run','/api/import-flowchart'}:
             return self.send(404, {'error': 'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length', '0'))
@@ -58,7 +59,11 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict):
                 raise ValueError('Richiesta non valida.')
-            result = run_program(data.get('code'), data.get('input', ''))
+            if self.path == '/api/import-flowchart':
+                result = {'document':import_flowchart(data.get('code'))}
+            else:
+                arguments = (data.get('code'), data.get('input', ''))
+                result = run_program(*arguments, flow=data['flow']) if 'flow' in data else run_program(*arguments)
             self.send(200, result)
         except (json.JSONDecodeError, ValueError, CodeError) as error:
             self.send(400, {'error': str(error)})
