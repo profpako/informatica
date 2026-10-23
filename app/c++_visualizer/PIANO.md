@@ -1039,3 +1039,17 @@ Anteprima Chrome a 540 px senza overflow; viewport ripristinato. Schermata:
 sito-link-laboratorio.png. Controllo pubblico di destinazione e deploy effettuato
 come ultimo passo, dopo la pipeline Pages. Suite nativa completa non ripetuta:
 modifiche limitate a geometria SVG e link statico; gate Node e WASM automatici.
+
+### Scheda del laboratorio sotto la lezione
+
+- [x] Togliere il collegamento dalla navigazione e inserirlo sotto la lezione.
+- [x] Riutilizzare lo stile delle schede esistenti, senza cambiare il generatore.
+- [x] Verificare ordine, layout, permanenza dopo rigenerazione e link.
+- [x] Preparare il push con pubblicazione automatica e controllo pubblico finale.
+
+Stesso stile .lesson:only-child della lezione, con scheda a piena larghezza
+subito sotto e pulsante Apri il laboratorio. Blocco fuori dai marcatori generati;
+verificata la permanenza dopo rigenerazione e l’unicità del link. Controlli sito
+e tema superati. Chrome: entrambe le schede larghe 1120 px, distanti 22 px;
+a 540 px layout verticale e nessuna eccedenza orizzontale. Viewport ripristinato.
+Schermata: sito-scheda-laboratorio.png. Nessuna modifica al motore C++.
