@@ -12,7 +12,7 @@ Il diagramma genera C++ ed è eseguito dal medesimo motore locale: memoria, cons
 parametri e passi restano disponibili. Codice C++ e diagramma hanno salvataggi
 separati nel browser; il diagramma può essere salvato e riaperto come file JSON.
 
-Scegliere **Flowchart** per partire da Inizio/Fine, oppure **Esempio area** per
+Scegliere **Flowchart** per partire da Inizio/Fine, oppure **Altro → Esempio area** per
 osservare una funzione già pronta. Selezionare il tipo di blocco e premere
 **Aggiungi blocco**; selezionare un blocco del diagramma per modificarne i campi.
 Si può anche cliccare direttamente su una freccia o sul suo **+**: il menu mostra
@@ -24,8 +24,23 @@ Per usare la tastiera, raggiungere un **+** con Tab e premere Invio o Spazio;
 nel menu usare frecce su/giù, Home/End e Invio. Escape chiude senza inserire.
 Le frecce di salto di Restituisci, Esci dal ciclo e Continua il ciclo non sono
 punti di inserimento. Durante l'esecuzione i menu di inserimento sono disattivati.
-Per decisioni e cicli, il menu **Inserisci** permette di aggiungere istruzioni
+Per decisioni e cicli, il menu **Posizione** permette di aggiungere istruzioni
 nei rami Vero/Falso o nel corpo. Sono disponibili riordino, eliminazione e Annulla.
+
+La testata riunisce modalità, nome e gestione dei file. **Altro** contiene
+**Nuovo diagramma**, **Esempio area** ed **Esporta PNG**. La barra **Subroutine**
+raggruppa selezione, creazione, **Parametri e risultato** e **Annulla**; le proprietà
+occupano spazio soltanto quando aperte. Durante una traccia **Modifica diagramma**
+prende il posto di Nuova subroutine.
+
+Sotto il diagramma, tipo di blocco, **Posizione** e **Aggiungi blocco** sono allineati.
+La barra seguente raggruppa modalità **Input** e **Visualizza esecuzione**; i valori
+preparati compaiono subito sotto quando questa modalità è selezionata. Su finestre
+strette i gruppi si dispongono su più righe senza sovrapporsi.
+
+I raccordi dei percorsi sono linee continue: non mostrano cerchietti né punte di
+freccia intermedie. I **+** restano disponibili per inserire blocchi. L'evidenziazione
+del percorso attraversa anche i raccordi senza interrompere la linea.
 
 La sintassi dei campi segue le convenzioni concordate, simili ad AlgoBuild:
 
@@ -50,11 +65,12 @@ La sintassi dei campi segue le convenzioni concordate, simili ad AlgoBuild:
   `i = 0; i < 10; i = i + 1`. Passando il mouse o spostando il focus su ciascuna
   parte compare il tooltip Inizializzazione, Condizione oppure Incremento.
   La larghezza si adatta al testo; gli ovali riportano **INIZIO nome()** e **FINE nome()**.
-  I nomi nei menu sono **IF**, **FOR**, **WHILE**, **DO...WHILE**. Il WHILE esce
+  I nomi nei menu sono **IF**, **Ciclo FOR**, **Ciclo WHILE**, **Ciclo DO-WHILE**. Il WHILE esce
   verso il basso dal vertice inferiore del rombo, anche quando il corpo è vuoto;
   nel DO...WHILE la freccia del corpo scende verso il vertice superiore del rombo.
+  Nei rombi di WHILE e DO-WHILE compare soltanto la condizione.
   Il piccolo cerchio del + lascia visibili le punte; la sua area di clic è più ampia.
-- **Subroutine**: aggiungerle e sceglierle dal menu Diagramma; nelle proprietà
+- **Subroutine**: aggiungerle e sceglierle dal menu Subroutine; **Parametri e risultato** apre le proprietà per
   impostare nome, risultato e parametri per valore, riferimento, puntatore o array.
   Usare Chiamata per gli argomenti e l'eventuale destinazione del risultato;
   una destinazione scalare nuova ricava il tipo restituito. Restituisci indica il ritorno.
@@ -85,11 +101,11 @@ La scelta è ricordata e vale anche per il codice C++. Il numero del passo corre
 compare anche direttamente sulla barra, sopra il cursore: segue l’avanzamento,
 l’animazione e lo spostamento manuale senza uscire dai bordi.
 
-**Salva diagramma** esporta il documento `.flow.json`; **Apri diagramma** lo
-ripristina. Nuovo diagramma ed Esempio area sono annullabili. Il diagramma è
+**Salva** esporta il documento `.flow.json`; **Apri** lo ripristina. Entrambi sono
+accanto al nome del programma. Nuovo diagramma ed Esempio area sono annullabili. Il diagramma è
 anche ricordato nel browser, separatamente dal codice C++ e dai suoi input.
 I documenti delle versioni 1 e 2 vengono aggiornati al formato 3 conservando
-blocchi e identificatori. **Esporta PNG** scarica l'intero diagramma della subroutine
+blocchi e identificatori. **Altro → Esporta PNG** scarica l'intero diagramma della subroutine
 selezionata su fondo bianco, anche se parte del disegno è fuori dall'area visibile.
 Mantiene testo e colori correnti ed esclude i + di modifica. Le dimensioni sono
 limitate a 8192 pixel per lato e 32 megapixel; diagrammi molto grandi vengono ridotti.
@@ -142,8 +158,8 @@ byte e ne usa il nome. Il contenuto è validato prima di sostituire l'editor; un
 file non leggibile lascia il programma corrente disponibile. L'apertura di un
 nuovo sorgente svuota gli input del precedente programma.
 
-In modalità Flowchart, **Salva diagramma** scarica un `.flow.json` con il nome
-scelto e tutte le subroutine. **Apri diagramma** ripristina anche il nome; per i
+In modalità Flowchart, **Salva** scarica un `.flow.json` con il nome
+scelto e tutte le subroutine. **Apri** ripristina anche il nome; per i
 vecchi documenti senza titolo viene usato il nome del file. **Scarica C++ generato**
 usa lo stesso nome del diagramma. Nuovo programma/diagramma riparte senza nome.
 I nomi del C++ e del Flowchart sono ricordati separatamente; la conversione porta

@@ -1,6 +1,7 @@
 'use strict';
 const FlowchartEditor = (() => {
   const C = FlowchartCore;
+  const menuLabels = {...C.kinds, for:'Ciclo FOR', while:'Ciclo WHILE', do:'Ciclo DO-WHILE'};
   const el = (tag, text, className) => {
     const node = document.createElement(tag);
     if (text !== undefined) node.textContent = text;
@@ -20,7 +21,7 @@ const FlowchartEditor = (() => {
       return svg('polygon', {points:`${-half+bevel},0 ${half-bevel},0 ${half},${height/2} ${half-bevel},${height} ${-half+bevel},${height} ${-half},${height/2}`});
     }
     if (shape === 'io') return svg('polygon',{points:`${-half+width*.075},0 ${half},0 ${half-width*.075},${height} ${-half},${height}`});
-    if (shape === 'join') return svg('circle',{cx:0,cy:6,r:6});
+    if (shape === 'join') return svg('path',{d:`M 0 0 V ${height}`,class:'flow-join-line'});
     return svg('rect',{x:-half,y:0,width,height,rx:shape==='terminal'?height/2:3});
   }
   function blockIcon(kind) {
@@ -54,20 +55,23 @@ const FlowchartEditor = (() => {
     }
     build() {
       const toolbar = el('div', undefined, 'flow-toolbar');
+      toolbar.setAttribute('role', 'group'); toolbar.setAttribute('aria-label', 'Comandi della subroutine');
       this.fnSelect = this.select([], 'Diagramma della subroutine');
       this.fnSelect.addEventListener('change', () => { this.fnId = this.fnSelect.value; this.selected = null; this.render(); });
-      const diagramLabel = el('label', 'Diagramma '); diagramLabel.append(this.fnSelect); toolbar.append(diagramLabel);
+      const diagramLabel = el('label', 'Subroutine '); diagramLabel.append(this.fnSelect); toolbar.append(diagramLabel);
       this.addFunction = this.button('Nuova subroutine', () => this.mutate(() => {
         let index = 1; while (this.document.functions.some(fn => fn.name === 'procedura' + index)) index++;
         const fn = { id: C.id(), name: 'procedura' + index, returnType: 'void', params: [], body: [] };
         this.document.functions.push(fn); this.fnId = fn.id; this.selected = null;
-      }, true), toolbar);
-      this.edit = this.button('Modifica diagramma', () => this.options.onEdit(), toolbar); this.edit.hidden = true;
+      }, true), toolbar, 'flow-new-function');
+      this.edit = this.button('Modifica diagramma', () => this.options.onEdit(), toolbar, 'flow-edit-diagram'); this.edit.hidden = true;
+      this.propertiesButton = this.button('Parametri e risultato', () => { this.functionProps.open = !this.functionProps.open; }, toolbar, 'flow-properties');
+      this.propertiesButton.setAttribute('aria-expanded', 'false');
+      this.undoButton = this.button('Annulla', () => this.undo(), toolbar, 'flow-undo');
       this.root.append(toolbar);
-      const files = el('div', undefined, 'flow-files');
-      this.newButton = this.button('Nuovo diagramma', () => this.replace(C.blank()), files);
-      this.exampleButton = this.button('Esempio area', () => this.replace({...C.example(), title: 'Area del rettangolo'}), files);
-      this.undoButton = this.button('Annulla', () => this.undo(), files);
+      const files = this.options.fileRoot;
+      this.fileMenu = el('div', undefined, 'flow-file-menu'); this.fileMenu.id = C.id();
+      this.fileMenu.setAttribute('popover', 'auto'); this.fileMenu.setAttribute('role', 'group'); this.fileMenu.setAttribute('aria-label', 'Altre azioni del programma');
       this.file = el('input'); this.file.type = 'file'; this.file.accept = '.json,application/json'; this.file.hidden = true;
       this.file.addEventListener('change', async () => {
         const file = this.file.files[0]; if (!file) return;
@@ -79,18 +83,37 @@ const FlowchartEditor = (() => {
         } catch (error) { this.message('Apertura non riuscita: ' + error.message, true); }
         this.file.value = '';
       });
-      this.openButton = this.button('Apri diagramma', () => this.file.click(), files);
-      this.button('Salva diagramma', () => {
+      this.openButton = this.button('Apri', () => this.file.click(), files); this.openButton.setAttribute('aria-label', 'Apri diagramma');
+      const save = this.button('Salva', () => {
         const name = ProgramFiles.filename(this.document.title || '', '.flow.json');
         ProgramFiles.download(JSON.stringify(this.document, null, 2), name, 'application/json');
         this.message('File preparato: ' + name + '. Lo trovi nei download del browser.');
-      }, files);
-      this.pngButton = this.button('Esporta PNG', () => this.exportPng(), files);
-      files.append(this.file); this.root.append(files);
-      this.functionProps = el('details', undefined, 'flow-function-props'); this.functionProps.append(el('summary', 'Parametri e risultato della subroutine'));
+      }, files, 'flow-save'); save.setAttribute('aria-label', 'Salva diagramma');
+      const more = el('button', 'Altro ▾'); more.type = 'button'; more.setAttribute('popovertarget', this.fileMenu.id); more.setAttribute('aria-label', 'Altre azioni del programma');
+      more.setAttribute('aria-expanded', 'false'); more.setAttribute('aria-controls', this.fileMenu.id);
+      files.append(more, this.fileMenu, this.file);
+      this.newButton = this.button('Nuovo diagramma', () => this.replace(C.blank()), this.fileMenu); this.newButton.autofocus = true;
+      this.exampleButton = this.button('Esempio area', () => this.replace({...C.example(), title: 'Area del rettangolo'}), this.fileMenu);
+      this.pngButton = this.button('Esporta PNG', () => this.exportPng(), this.fileMenu);
+      this.fileMenu.addEventListener('toggle', event => {
+        more.setAttribute('aria-expanded', String(event.newState === 'open'));
+        if (event.newState !== 'open') return;
+        const anchor = more.getBoundingClientRect(), box = this.fileMenu.getBoundingClientRect();
+        this.fileMenu.style.left = Math.max(8, Math.min(anchor.right - box.width, window.innerWidth - box.width - 8)) + 'px';
+        this.fileMenu.style.top = Math.max(8, Math.min(anchor.bottom + 6, window.innerHeight - box.height - 8)) + 'px';
+      });
+      this.fileMenu.addEventListener('click', event => { if (event.target.closest('button')) this.fileMenu.hidePopover(); });
+      this.functionProps = el('details', undefined, 'flow-function-props'); this.functionProps.id = C.id();
+      const summary = el('summary', 'Parametri e risultato della subroutine'); summary.hidden = true; this.functionProps.append(summary);
+      this.functionProps.setAttribute('aria-label', 'Parametri e risultato della subroutine'); this.propertiesButton.setAttribute('aria-controls', this.functionProps.id);
+      this.functionProps.setAttribute('aria-hidden', 'true');
+      this.functionProps.addEventListener('toggle', () => {
+        this.propertiesButton.setAttribute('aria-expanded', String(this.functionProps.open));
+        this.functionProps.setAttribute('aria-hidden', String(!this.functionProps.open));
+      });
       this.functionForm = el('div'); this.functionProps.append(this.functionForm); this.root.append(this.functionProps);
-      this.status = el('p', '', 'flow-status'); this.status.setAttribute('role', 'status'); this.root.append(this.status);
-      this.scopeNote=el('p','Importato da C++: dichiarazioni e durata delle variabili seguono gli ambiti C++, compreso il contatore locale al FOR.','flow-status');this.scopeNote.hidden=true;this.root.append(this.scopeNote);
+      this.status = el('p', '', 'flow-status'); this.status.hidden = true; this.status.setAttribute('role', 'status'); this.root.append(this.status);
+      this.scopeNote=el('p','Importato da C++: dichiarazioni e durata delle variabili seguono gli ambiti C++, compreso il contatore locale al FOR.','flow-status');this.scopeNote.hidden=true;
       this.canvas = el('div', undefined, 'flow-canvas'); this.canvas.tabIndex = 0;
       this.canvas.addEventListener('scroll',()=>this.hideForTooltip());
       this.canvas.setAttribute('aria-label', 'Diagramma di flusso: seleziona un blocco per modificarlo'); this.root.append(this.canvas);
@@ -103,7 +126,7 @@ const FlowchartEditor = (() => {
       this.kindSelect.addEventListener('click',()=>this.openKindMenu(this.kindSelect,kind=>this.chooseKind(kind)));
       this.insertion = this.select([], 'Posizione del nuovo blocco');
       const typeLabel = el('label', 'Nuovo blocco '); typeLabel.append(this.kindSelect);
-      const whereLabel = el('label', 'Inserisci '); whereLabel.append(this.insertion);
+      const whereLabel = el('label', 'Posizione '); whereLabel.append(this.insertion);
       palette.append(typeLabel, whereLabel);
       this.addButton = this.button('Aggiungi blocco', () => this.addNode(), palette, 'flow-add'); this.root.append(palette);
       this.kindMenu = el('div',undefined,'flow-kind-menu'); this.kindMenu.id = C.id();
@@ -122,13 +145,15 @@ const FlowchartEditor = (() => {
       this.forTooltip = el('div',undefined,'flow-for-tooltip'); this.forTooltip.id = C.id();
       this.forTooltip.setAttribute('popover','manual'); this.forTooltip.setAttribute('role','tooltip'); this.root.append(this.forTooltip);
       const preview = el('section', undefined, 'flow-preview'); preview.setAttribute('aria-label', 'C++ generato'); preview.append(el('h3', 'C++ generato'));
+      preview.append(this.scopeNote);
       this.source = el('pre'); this.source.tabIndex = 0; this.source.setAttribute('aria-label', 'Sorgente C++ generato dal diagramma'); preview.append(this.source);
       this.button('Scarica C++ generato', async () => { try { const source = await this.getSource(); ProgramFiles.download(source.code, ProgramFiles.filename(this.document.title || '', '.cpp'), 'text/plain'); } catch {} }, preview);
       this.options.sourceRoot.append(preview);
     }
     chooseKind(kind) {
       this.kindSelect.value=kind;
-      this.kindSelect.replaceChildren(blockIcon(kind),el('span',C.kinds[kind]),el('span','▾','flow-kind-chevron'));
+      this.kindSelect.replaceChildren(blockIcon(kind),el('span',menuLabels[kind]),el('span','▾','flow-kind-chevron'));
+      this.kindSelect.title = menuLabels[kind];
     }
     hideForTooltip() {
       if(this.forTooltip?.matches(':popover-open'))this.forTooltip.hidePopover();
@@ -148,7 +173,7 @@ const FlowchartEditor = (() => {
       if(this.running)return;
       this.closeKindMenu(); this.menuAnchor=anchor;
       this.kindMenu.replaceChildren(el('p',caption,'flow-kind-caption'));
-      for(const [kind,label] of Object.entries(C.kinds)) {
+      for(const [kind,label] of Object.entries(menuLabels)) {
         const button=this.button('',()=>{this.closeKindMenu();select(kind);if(anchor===this.kindSelect)anchor.focus();},this.kindMenu,'flow-kind-option');
         button.setAttribute('role','menuitem');button.append(blockIcon(kind),el('span',label));
       }
@@ -193,7 +218,7 @@ const FlowchartEditor = (() => {
       } catch(error) { this.message('Esportazione non riuscita: '+error.message,true); }
       finally {if(url)URL.revokeObjectURL(url);this.pngButton.disabled=false;}
     }
-    message(text, error = false) { this.status.textContent = text; this.status.classList.toggle('flow-error', error); }
+    message(text, error = false) { this.status.textContent = text; this.status.hidden = !text; this.status.classList.toggle('flow-error', error); }
     mutate(action, openProperties = false) {
       if (this.running) return;
       const previous = JSON.stringify(this.document);
@@ -253,6 +278,7 @@ const FlowchartEditor = (() => {
       this.scopeNote.hidden=this.document.scope!=='cpp';
       this.root.classList.toggle('flow-running', this.running);
       this.edit.hidden = !this.running;
+      this.addFunction.hidden = this.running;
       for (const control of [this.newButton,this.exampleButton,this.openButton,this.addFunction,this.kindSelect,this.insertion,this.addButton]) control.disabled = this.running;
       this.undoButton.disabled = this.running || !this.history.length;
       this.renderFunction(fn); this.renderInspector(fn); this.renderGraph(); this.preview();
@@ -262,7 +288,7 @@ const FlowchartEditor = (() => {
         const candidate = C.generate(this.document), key = JSON.stringify(candidate);
         if (key === this.sourceKey && !this.sourceFailure) {
           this.paintSource();
-          this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : 'Clicca su una freccia (+) per inserire un blocco, oppure seleziona un blocco per modificarlo.');
+          this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : '');
           return;
         }
         this.sourceKey = key; this.generated = candidate; this.sourceFailure = false;
@@ -275,7 +301,7 @@ const FlowchartEditor = (() => {
               const row = el('span', line || ' ', 'generated-line'); row.dataset.line = index + 1; return row;
             }));
             this.paintSource(!!this.selected);
-            this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : 'Clicca su una freccia (+) per inserire un blocco, oppure seleziona un blocco per modificarlo.');
+            this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : '');
           }
           return generated;
         }).catch(error => {
@@ -330,6 +356,7 @@ const FlowchartEditor = (() => {
     renderInspector(fn) {
       this.inspector.replaceChildren();
       const found = C.locate(this.document,this.selected), node = found?.node;
+      this.inspector.classList.toggle('flow-inspector-empty', !node);
       const positions = [['end','Alla fine del diagramma']];
       if (node) {
         positions.unshift(['after','Dopo il blocco selezionato']);
@@ -337,7 +364,7 @@ const FlowchartEditor = (() => {
         if (Array.isArray(node.body)) positions.push(['body','Nel corpo del ciclo']);
       }
       this.insertion.replaceChildren(...positions.map(([value,text])=>{const option=el('option',text);option.value=value;return option;}));
-      if (!node) { this.inspector.append(el('p',this.running?'Seleziona un blocco per consultarne i campi.':'Clicca sulla freccia dopo INIZIO e scegli il blocco da aggiungere, oppure usa i comandi qui sotto.')); return; }
+      if (!node) { this.inspector.append(el('p',this.running?'Seleziona un blocco per consultarne i campi.':'Clicca su una freccia (+) oppure aggiungi un blocco qui sotto.')); return; }
       this.inspector.append(el('h3',C.kinds[node.kind]));
       const fields = el('div',undefined,'flow-field-grid');
       const field = (caption,key,options=null,hint='',multiline=false) => this.field(fields,caption,node[key],value=>{node[key]=value;},options,hint,multiline);
@@ -405,8 +432,8 @@ const FlowchartEditor = (() => {
         if(edge.owner)group.dataset.owner=edge.owner;if(edge.outcome)group.dataset.outcome=edge.outcome;
         const d=edge.points.map(([x,y],i)=>(i?'L':'M')+x+' '+y).join(' ');
         const path=svg('path',{d,class:'flow-edge-line'});
-        if(!edge.head)path.setAttribute('marker-end','url(#flow-arrow)');
-        else group.dataset.arrow=edge.arrow;
+        if(!edge.head && edge.endArrow)path.setAttribute('marker-end','url(#flow-arrow)');
+        if(edge.head)group.dataset.arrow=edge.arrow;
         group.append(path);
         if(edge.insertion&&!this.running) {
           const position=edge.insertion;
@@ -453,7 +480,7 @@ const FlowchartEditor = (() => {
           const text=svg('text',{'text-anchor':'middle',y:node.height/2-(lines.length-1)*8+4+(node.badge?6:0)});
           lines.forEach((line,index)=>{const span=svg('tspan',{x:0,dy:index?16:0});span.textContent=line.trim();text.append(span);});group.append(text);
         }
-        if(C.locate(this.document,node.owner)) {
+        if(node.shape!=='join' && C.locate(this.document,node.owner)) {
           group.setAttribute('role','button');group.setAttribute('tabindex','0');group.setAttribute('aria-label',C.kinds[C.locate(this.document,node.owner).node.kind]+': '+node.text);
           const select=()=>{this.selected=node.owner;this.renderInspector(this.document.functions.find(f=>f.id===this.fnId));this.renderGraph();this.paintSource(true);};
           group.addEventListener('click',select);group.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();select();this.canvas.querySelector(`[data-node="${node.id}"]`)?.focus({preventScroll:true});}});
@@ -510,7 +537,14 @@ const FlowchartEditor = (() => {
       this.canvas.querySelectorAll('.flow-active,.flow-true,.flow-false,.flow-chosen,.flow-traversed').forEach(node=>node.classList.remove('flow-active','flow-true','flow-false','flow-chosen','flow-traversed'));
       if(!this.traceState)return;
       const {point,condition}=this.traceState;
-      if(point.fn===this.fnId)for(const index of this.traceState.route||[])this.canvas.querySelector(`[data-edge="${index}"]`)?.classList.add('flow-traversed');
+      if(point.fn===this.fnId)for(const index of this.traceState.route||[]) {
+        this.canvas.querySelector(`[data-edge="${index}"]`)?.classList.add('flow-traversed');
+        const edge = this.graph.edges[index];
+        for (const id of [edge.from, edge.to]) {
+          const node = this.canvas.querySelector(`[data-node="${id}"]`);
+          if (node?.classList.contains('join')) node.classList.add('flow-traversed');
+        }
+      }
       this.canvas.querySelector(`[data-node="${point.node}"]`)?.classList.add('flow-active');
       const conditionPoint=condition&&this.generated?.lineMap[condition.line];
       if(conditionPoint?.fn===this.fnId&&condition.action==='test') {

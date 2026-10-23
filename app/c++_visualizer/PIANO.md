@@ -797,3 +797,106 @@ Verifiche della revisione:
 - Suite Node file con nome, controlli sintattici JS e git diff --check superati.
   Non ripetuta l'intera suite C++: nessuna modifica al generatore o al runtime.
   Gli asset sono letti dal disco dal server abituale; basta ricaricare la pagina.
+
+## Riordino della testata del Flowchart
+
+- [x] Riunire titolo/modalità nella stessa intestazione, riducendo la fascia superiore.
+- [x] Mettere nome programma e comandi file sulla stessa riga.
+  - [x] Apri e Salva sempre visibili; Nuovo diagramma, Esempio area ed Esporta PNG in Altro.
+  - [x] Preservare nomi accessibili, tastiera, Escape e chiusura del menu.
+- [x] Riunire scelta subroutine, creazione, Parametri e Annulla in una barra contestuale.
+  - [x] Aprire le proprietà solo su richiesta, con stato accessibile aggiornato.
+  - [x] Mostrare Modifica diagramma durante l'esecuzione al posto di Nuova subroutine.
+- [x] Eliminare l'istruzione duplicata sopra il diagramma, preservando errori/esiti.
+  - [x] Mantenere l'istruzione di inserimento vicino all'editor e nella guida.
+  - [x] Spostare la nota sugli ambiti C++ vicino al sorgente generato.
+- [x] Verificare spazio recuperato, larghezze normali/strette e Testo grande.
+- [x] Provare file/menu, proprietà, Annulla, selezione ed esecuzione; aggiornare guida e anteprime.
+
+Direzione grafica: banco di laboratorio esistente. Carta #f3f6fa, inchiostro #17263c,
+blu #245bb2, bordi #cbd5e1, testo secondario #53637a. Font di sistema per i comandi,
+Menlo/Consolas per il codice; allineamenti a sinistra, spaziatura 6/8/12/16 px.
+Non si introducono colori, font o decorazioni nuove.
+
+Disposizione scelta (desktop):
+    Il programma / Diagramma a blocchi                 [C++] [Flowchart]
+    Nome programma [________________________]         [Apri] [Salva] [Altro ▾]
+    Subroutine [main() ▾] [Nuova subroutine] [Parametri]            [Annulla]
+    ┌────────────────────── diagramma ────────────────────────────────────┐
+
+Alternativa scartata: mantenere tutti i pulsanti visibili in un'unica riga.
+Alle larghezze della colonna produrrebbe righe spezzate o testi troppo piccoli,
+lo stesso problema evidenziato dal docente. La barra file con azioni occasionali
+nel menu lascia visibili i comandi frequenti; le proprietà occupano spazio solo
+quando aperte. Su schermi stretti i gruppi vanno a capo senza sovrapporsi.
+
+Ambito: disposizione HTML/DOM e CSS, testi della guida. Nessuna modifica a
+salvataggi, formato dei file, generazione C++ o comportamento dell'esecuzione.
+
+### Punte di freccia sui raccordi
+
+- [x] Eliminare le punte intermedie dirette ai raccordi tecnici dei rami e dei cicli.
+- [x] Mantenere la freccia verso il blocco di destinazione e i punti di inserimento.
+- [x] Verificare FOR vuoto/popolato, Vero/Falso e collegamenti verso FINE.
+
+Evidenza del docente: i raccordi sono nodi separati del grafo SVG; il renderer
+applica una punta anche ai collegamenti diretti a questi nodi, duplicando le
+frecce prima del vero blocco di destinazione. La correzione è nella presentazione,
+senza modificare percorsi di esecuzione o inserimento dei blocchi.
+
+### Riordino dei comandi sotto il diagramma
+
+- [x] Allineare tipo blocco, posizione e Aggiungi blocco in un'unica barra.
+- [x] Raggruppare modalità input e avvio esecuzione nella barra successiva.
+  - [x] Campo valori preparati subito sotto, nascosto in modalità manuale.
+  - [x] Evitare istruzioni permanenti duplicate, conservando aiuti accessibili e stati di esecuzione.
+- [x] Compattare il suggerimento quando nessun blocco è selezionato.
+- [x] Verificare modalità manuale/preparata, finestra stretta e Testo grande.
+
+Ulteriore richiesta del docente: accorciare leggermente i parallelogrammi.
+- [x] Ridurre di altri 4 px sia il blocco a una riga sia quelli multilinea,
+  verificando che sigla e contenuto mantengano spazio sufficiente.
+
+### Nomi dei cicli nei menu dei blocchi
+
+- [x] Usare Ciclo FOR, Ciclo WHILE e Ciclo DO-WHILE nella scelta della barra
+  e nel menu aperto sulle frecce, mantenendo gli identificatori interni e le forme.
+
+- [x] Nei rombi WHILE e DO-WHILE mostrare soltanto la condizione; mantenere
+  il nome del ciclo nei menu, nelle proprietà e nel nome accessibile del blocco.
+
+Correzione ulteriore sui raccordi, dopo la nuova immagine del docente:
+- [x] Eliminare i cerchietti dei raccordi tecnici, che continuano a interrompere
+  visivamente il percorso; collegare i tratti con una linea continua.
+- [x] Mantenere i + di inserimento e le frecce verso i blocchi, senza rendere
+  selezionabili i raccordi tecnici come se fossero istruzioni.
+
+
+Verifiche conclusive della revisione:
+- Chrome: testata chiusa di 174,5 px nella colonna desktop; modalità e titolo,
+  nome/file e comandi subroutine raggruppati. Menu Altro provato con Escape,
+  autofocus, chiusura dopo la scelta e cambio modalità. Parametri espandibili,
+  Nuova subroutine e Annulla funzionanti; Apri/Salva mantengono i comandi originali.
+- Salvato realmente Barre ordinate.flow.json dalla nuova barra: nome e due
+  subroutine conservati. Nuovo diagramma e ripristino con Annulla verificati.
+- Barra inferiore: selezione/inserimento FOR e modalità input/avvio funzionanti.
+  Centri verticali di selettore input e Avvio identici (1203,5 px nella prova).
+  Eseguito esempio area con 4 e 6 sia preparati sia manuali: risultato 24.
+- Controllati 980 e 540 px, anche con Testo grande: larghezza pagina senza eccedenze;
+  proprietà e Annulla condividono la seconda riga nella barra mobile.
+- Nomi Ciclo FOR / Ciclo WHILE / Ciclo DO-WHILE verificati in entrambi i menu.
+  Nei rombi di WHILE e DO-WHILE il testo è solo i<2 / i>0. Parallelogramma a
+  una riga misurato a 50 px; quelli multilinea hanno 4 px in meno.
+- Raccordi senza cerchietti né ruoli di pulsante, con segmenti continui anche
+  durante l'evidenziazione blu. FOR vuoto: una punta al ritorno sulla condizione
+  e una verso il blocco successivo; nessuna punta sui raccordi tecnici.
+- Programma completo WHILE/DO-WHILE/FOR eseguito: risultato 3. PNG aggiornato
+  scaricato e ispezionato: flowchart-cicli-frecce.png. Anteprima della disposizione:
+  flowchart-barre-riordinate.png.
+- Superati Node Flowchart (inclusi FOR vuoto/popolato e punte sui raccordi),
+  Node file con nome, controlli sintattici e git diff --check. Non ripetuta la
+  suite C++ completa: generazione, API e runtime non sono stati modificati.
+
+Il server abituale serve gli asset aggiornati dal disco; per vedere tutte le
+correzioni occorre ricaricare la pagina. Pubblicazione sul ramo main richiesta
+nelle istruzioni del docente, dopo le verifiche.

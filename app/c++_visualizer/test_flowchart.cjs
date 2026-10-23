@@ -154,6 +154,8 @@ const full=C.blank();full.functions[0].body=Array.from({length:200},()=>make('ou
 assert.throws(()=>C.insertAt(full,{fn:'main',parent:null,branch:'body',index:0},'output'),/200/);
 assert.equal(full.functions[0].body.length,200);
 const doDoc=C.blank(), doLoop=make('do',{condition:'false'});doDoc.functions[0].body=[doLoop];
+assert.equal(C.label(doLoop,doDoc),'false');
+assert.equal(C.label(make('while',{condition:'n > 0'}),doDoc),'n > 0');
 const doEdge=C.layout(doDoc,'main').edges.find(e=>e.from===doLoop.id+':entry'&&e.to===doLoop.id);
 assert.equal(doEdge.insertion.parent,doLoop.id);assert.equal(doEdge.insertion.branch,'body');
 assert.equal(C.kinds.if,'IF');assert.equal(C.kinds.for,'FOR');assert.equal(C.kinds.while,'WHILE');assert.equal(C.kinds.do,'DO...WHILE');
@@ -184,6 +186,17 @@ for(const outcome of [true,false]) {
 }
 assert.deepEqual(C.pathBetween(emptyChoiceGraph,destination.id,emptyIf.id),[]);
 const emptyCycle=C.blank(), cycle=make('while',{condition:'true'});emptyCycle.functions[0].body=[cycle];
+const forRouting=C.blank(), forEmpty=make('for',{condition:'i < 2'});forRouting.functions[0].body=[forEmpty];
+const routingGraph=C.layout(forRouting,'main');
+assert.equal(routingGraph.edges.find(edge=>edge.from===forEmpty.id&&edge.outcome==='true').endArrow,false);
+assert.equal(routingGraph.edges.find(edge=>edge.from===forEmpty.id&&edge.outcome==='false').endArrow,false);
+assert.equal(routingGraph.edges.find(edge=>edge.from===forEmpty.id+':body').endArrow,true);
+assert.equal(routingGraph.edges.find(edge=>edge.from===forEmpty.id+':exit').endArrow,true);
+for(const edge of routingGraph.edges)assert.equal(edge.endArrow,routingGraph.nodes.find(node=>node.id===edge.to).shape!=='join');
+forEmpty.body=[make('assign',{expression:'n = 1'})];
+const populatedRouting=C.layout(forRouting,'main');
+assert.equal(populatedRouting.edges.find(edge=>edge.from===forEmpty.id&&edge.outcome==='true').endArrow,true);
+assert.equal(populatedRouting.edges.find(edge=>edge.from===forEmpty.id&&edge.outcome==='false').endArrow,false);
 assert.equal(C.pathBetween(C.layout(emptyCycle,'main'),cycle.id,cycle.id,true).length,2);
 const fnGraph=C.layout(example,example.functions[1].id);
 assert.equal(fnGraph.nodes[0].text,'INIZIO calcolaArea()');assert.equal(fnGraph.nodes.at(-1).text,'FINE calcolaArea()');

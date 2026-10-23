@@ -316,7 +316,7 @@ const FlowchartCore = (() => {
     if (node.kind === 'input') return 'INPUT\n' + (node.target || 'variabile');
     if (node.kind === 'output') return (node.ending || 'OUTLN') + '\n' + node.expression;
     if (node.kind === 'for') return forParts(node).map(part => part.text).join('; ');
-    if (['if', 'while', 'do'].includes(node.kind)) return (node.kind === 'if' ? '' : kinds[node.kind] + '\n') + (node.condition || 'condizione');
+    if (['if', 'while', 'do'].includes(node.kind)) return node.condition || 'condizione';
     if (node.kind === 'call') return `${node.declareType ? (node.constant?'const ':'')+node.declareType+' ' : ''}${node.result ? node.result + ' = ' : ''}${document.functions.find(fn => fn.id === node.callee)?.name || 'subroutine'}(${node.args || ''})`;
     if (node.kind === 'return') return 'Restituisci ' + node.expression;
     return node.expression || kinds[node.kind];
@@ -339,7 +339,7 @@ const FlowchartCore = (() => {
   function dimensions(shape, text) {
     return { width: shape === 'join' ? 12 : shape === 'for' ? Math.max(320, text.length * 8 + 80) : 240,
       height: shape === 'join' ? 12 : shape === 'decision' ? 90
-        : shape === 'io' ? visualLines(text, shape).length === 1 ? 54 : visualLines(text, shape).length * 16 + 40
+        : shape === 'io' ? visualLines(text, shape).length === 1 ? 50 : visualLines(text, shape).length * 16 + 36
         : Math.max(shape === 'terminal' ? 44 : 62, visualLines(text, shape).length * 16 + (shape === 'terminal' ? 20 : 28)) };
   }
   function insertAt(document, position, kind) {
@@ -455,6 +455,7 @@ const FlowchartCore = (() => {
     connect(start.id,body.first||end.id,position(null,'body',0)); connect(body.tail,end.id,position(null,'body',fn.body.length));
     for(const e of edges) {
       const destination=byId(e.to);
+      e.endArrow = destination.shape !== 'join';
       if(destination && e.jump) {
         const lane=center+total.width/2+20;
         e.points=[[e.points[0][0],e.points[0][1]],[lane,e.points[0][1]+15],[lane,destination.y+destination.height/2],[destination.x+destination.width/2,destination.y+destination.height/2]];

@@ -14,6 +14,7 @@ const storage = {
 let mode = 'cpp';
 const flowEditor = new FlowchartEditor($('flow-pane'), {
   sourceRoot: $('flow-code-pane'),
+  fileRoot: $('flow-file-actions'),
   async resolveSource(generated) {
     if (!/^\s*std::decay_t<decltype\(/m.test(generated.code)) return generated;
     await configurationReady;
@@ -40,9 +41,10 @@ function setMode(next, initial = false) {
   $('cpp-pane').hidden = $('cpp-examples').hidden = mode === 'flow';
   $('flow-pane').hidden = mode !== 'flow';
   $('flow-code-pane').hidden = mode !== 'flow';
+  $('flow-file-actions').hidden = mode !== 'flow';
   $('mode-cpp').setAttribute('aria-pressed', String(mode === 'cpp'));
   $('mode-flow').setAttribute('aria-pressed', String(mode === 'flow'));
-  $('program-language').textContent = mode === 'flow' ? 'Diagramma a blocchi · esecuzione C++17' : 'C++17';
+  $('program-language').textContent = mode === 'flow' ? 'Diagramma a blocchi' : 'C++17';
   programName.value = mode === 'flow' ? flowEditor.document.title || '' : storage.get('program-name') || '';
   input.value = storage.get(mode === 'cpp' ? 'input' : 'flow-input') ?? '';
   storage.set('mode', mode);
@@ -63,6 +65,9 @@ function pause() {
 function updateLines() {
   $('gutter').replaceChildren(...code.value.split('\n').map((_, i) => element('span', i + 1)));
   $('gutter').scrollTop = code.scrollTop;
+}
+function setRunHint(text, visible = true) {
+  $('run-hint').textContent = text; $('run-hint').hidden = !visible;
 }
 function controls() {
   const absent = !steps.length;
@@ -89,7 +94,7 @@ function invalidate() {
   renderCondition(null, null);
   code.hidden = false; $('code-view').hidden = true; $('edit').hidden = true;
   $('source-status').textContent = 'Codice modificabile';
-  $('run-hint').textContent = 'Avvia per osservare il programma aggiornato.';
+  setRunHint('Avvia per osservare il programma aggiornato.', false);
   renderMemory(retainedMemory || { frames: [], variables: [] }, null, !!retainedMemory, retainedCalls);
   $('output').textContent = '';
   $('input-progress').hidden = true;
@@ -402,7 +407,10 @@ function cancelManual() {
 function syncInputMode() {
   const manual = $('input-mode').value === 'manual';
   $('input').hidden = $('prepared-input-label').hidden = manual;
+  $('prepared-inputs').hidden = manual;
   $('manual-input-hint').hidden = !manual;
+  if (manual) { $('input-mode').setAttribute('aria-describedby', 'manual-input-hint'); $('input-mode').title = $('manual-input-hint').textContent; }
+  else { $('input-mode').removeAttribute('aria-describedby'); $('input-mode').removeAttribute('title'); }
 }
 function renderManual() {
   const request = manualSession && position === steps.length - 1 ? steps[position]?.inputRequest : null;
@@ -433,7 +441,7 @@ $('manual-input-form').addEventListener('submit', async event => {
     if (requestVersion !== version) {if(data.session)cancelSession(data.session);return;}
     if (!response.ok) throw new Error(data.error || 'Impossibile inviare il valore.');
     steps = data.steps; manualSession = data.session || null; position = Math.min(priorLength, steps.length - 1);
-    $('run-hint').textContent = manualSession ? 'Continua con i passi fino alla prossima lettura.' : `${steps.length} passi pronti da esplorare.`;
+    setRunHint(manualSession ? 'Continua con i passi fino alla prossima lettura.' : `${steps.length} passi pronti da esplorare.`);
     if (data.error) { $('error').textContent = data.error; $('error').hidden = false; }
     render();
     if (resumeAfterInput && !steps[position]?.inputRequest) {resumeAfterInput = false;startPlayback();}
@@ -470,7 +478,7 @@ $('run').addEventListener('click', async () => {
   $('output').textContent = ''; $('input-progress').hidden = true;
   $('step-description').replaceChildren(element('p', 'Preparazione della nuova esecuzione…'));
   $('run').disabled = true; $('run').textContent = 'Preparazione in corso…';
-  $('run-hint').textContent = 'Compilo il programma e registro i passi.';
+  setRunHint('Compilo il programma e registro i passi.');
   $('error').hidden = true;
   try {
     const generated = mode === 'flow' ? await flowEditor.getSource() : null;
@@ -481,13 +489,13 @@ $('run').addEventListener('click', async () => {
       throw new Error('Server locale non raggiungibile. Avvia avvia.command e tieni aperto il terminale, poi ricarica la pagina e riprova. Codice e input sono conservati.');
     });
     const data = await response.json();
-    if (requestVersion !== version) { if(data.session)cancelSession(data.session); $('run-hint').textContent = 'Il codice è cambiato: avvia la nuova versione.'; return; }
+    if (requestVersion !== version) { if(data.session)cancelSession(data.session); setRunHint('Il codice è cambiato: avvia la nuova versione.'); return; }
     if (!response.ok) throw new Error(data.error || 'Impossibile generare la traccia.');
     steps = data.steps; position = 0; manualSession = data.session || null;
     code.hidden = true; $('code-view').hidden = false; $('edit').hidden = false;
     $('code-view').replaceChildren(...source.split('\n').map(line => element('span', line || ' ', 'code-line')));
     $('warnings-box').hidden = !data.warnings; $('warnings').textContent = data.warnings || '';
-    $('run-hint').textContent = data.error ? 'Traccia disponibile fino al punto di errore.' : manualSession ? 'Segui i passi: alla lettura inserisci il valore nella console.' : `${steps.length} passi pronti da esplorare.`;
+    setRunHint(data.error ? 'Traccia disponibile fino al punto di errore.' : manualSession ? 'Segui i passi: alla lettura inserisci il valore nella console.' : `${steps.length} passi pronti da esplorare.`);
     if (data.error) { $('error').textContent = data.error; $('error').hidden = false; }
     render();
   } catch (error) {
@@ -501,7 +509,7 @@ $('run').addEventListener('click', async () => {
     $('stack').replaceChildren(element('li', 'Nessuna chiamata attiva.', 'placeholder'));
     $('output').textContent = '';
     $('error').textContent = error.message; $('error').hidden = false;
-    $('run-hint').textContent = 'Controlla il messaggio di errore.';
+    setRunHint('Controlla il messaggio di errore.');
   } finally { if (!steps.length) flowEditor.setRunning(false); $('run').disabled = !token; $('run').textContent = '▶ Visualizza esecuzione'; }
 });
 $('mode-cpp').addEventListener('click', () => setMode('cpp'));
