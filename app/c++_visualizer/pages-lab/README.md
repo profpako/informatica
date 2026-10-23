@@ -81,11 +81,18 @@ giornaliere. Il sito non ha una scadenza di un giorno.
 ## Verifiche condivise e aggiornamenti
 
 84 test nativi superati su macOS, inclusi i tre standard e le sessioni manuali.
-La suite WASM verifica 37 casi: esempi, standard effettivo, parametri, array,
+La suite WASM verifica 38 casi: esempi, standard effettivo, parametri, array,
 condizioni, ricorsione, ruoli, UTF-8, input/correzioni/annullamenti, errori e limiti,
 conversioni bidirezionali e tipi generati. Tre test del bridge confrontano anche
-la strumentazione con il motore locale. La pipeline esegue i gate Node/bridge/WASM
-prima di creare e distribuire l’artefatto Pages; un fallimento blocca la pubblicazione.
+la strumentazione con il motore locale. La pipeline esegue sempre i controlli
+rapidi Node, sito e tema, e ricostruisce la distribuzione da sorgente.
+I gate bridge/WASM riusano soltanto un esito positivo per la stessa impronta di
+codice JavaScript/Python/C++, test, pacchetti JSON e workflow, con le stesse
+versioni di Node, Python e Clang e la stessa piattaforma. HTML, CSS, documenti,
+immagini e pagine del sito non invalidano questo collaudo del motore.
+La cache viene salvata solo dopo i test riusciti: un push precedentemente fallito
+non abilita il percorso rapido. Cache assente/non disponibile o avvio manuale
+eseguono il collaudo completo; un fallimento dei controlli blocca la pubblicazione.
 
 Gli aggiornamenti richiedono un push su main: una modifica non pubblicata sul PC
 non cambia il sito. Le parti comuni sono uniche; gli adattatori di esecuzione
@@ -96,3 +103,8 @@ Verifica su Pages del 23 ottobre 2026: pipeline build/deploy verde; input manual
 archivio delle due chiamate. Vecchio URL verificato con rinvio automatico al
 nuovo percorso; i dati del browser sono stati conservati. Prova visiva:
 [verifica-condivisa.png](verifica-condivisa.png).
+
+Gli output del flowchart producono C++ essenziale: `cout << "Risultato" << endl;`.
+Il raggruppamento resta per confronti, shift, logica e altre espressioni che
+cambierebbero significato senza parentesi. Verificati 12 test nativi dedicati,
+compresi array/puntatori e la precedenza con output concatenati.

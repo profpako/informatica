@@ -1076,4 +1076,7 @@ successo di bridge e WASM. Non si usa il solo diff dell’ultimo commit, che
 potrebbe ignorare un precedente push non collaudato. Nessuna dipendenza da
 numero di commit o cronologia completa. Le modifiche a sole pagine, documenti
 o immagini riusano il risultato; senza cache il collaudo viene eseguito.
-Primo collaudo completo e successiva pubblicazione rapida da verificare su GitHub.
+Collaudo completo su GitHub superato: run 40033919588, 38 casi WASM e bridge,
+build e deploy verdi; esito positivo conservato. HTML/CSS sono esclusi dal
+fingerprint del compilatore; sintassi JS e build restano sempre verificate.
+L’ultimo push di sola documentazione serve a confermare il riuso effettivo.

@@ -16,8 +16,12 @@ Editor, flowchart, runtime di osservazione e analisi Python hanno un'unica sorge
 in questa cartella. `transport.js` usa le API locali; la build online sostituisce
 solo l'adattatore con il Worker WASM. `app.js` viene distribuito senza riscritture.
 
-Dopo un push su **main**, la pipeline del sito verifica interfaccia, conversioni
-e motore WASM; se i test passano pubblica automaticamente l'applicazione a
+Dopo un push su **main**, la pipeline verifica sempre sito, tema ed editor e
+ricostruisce il laboratorio. I test del compilatore e del motore WASM vengono
+ripetuti se cambia il codice, un test, la toolchain o il workflow, oppure se manca
+un collaudo positivo identico in cache. Link, testi, HTML, CSS e documentazione
+possono quindi essere pubblicati senza ripetere quei test lunghi. L'avvio manuale
+della pipeline li forza sempre. Se i controlli passano pubblica automaticamente l'applicazione a
 https://profpako.github.io/informatica/cpp-visualizer/ insieme alle lezioni.
 Se i test falliscono resta disponibile l'ultima pubblicazione riuscita.
 Le modifiche presenti solo sul computer diventano online dopo il push verificato.
