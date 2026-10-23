@@ -1015,7 +1015,7 @@ Controllo puntuale del testo e diff; nessuna modifica alla logica.
 - [x] Riprodurre la punta orizzontale su un ramo IF che entra in un blocco.
 - [x] Correggere il percorso alla fonte e aggiungere una prova mirata.
 - [x] Verificare rami vuoti/popolati, cicli esistenti e resa nel browser.
-- [ ] Pubblicare la correzione condivisa e controllare la pipeline.
+- [x] Push della correzione condivisa e avvio della pipeline (88de332); esito controllato al termine della pubblicazione.
 
 Causa: ultimo segmento del ramo popolato di lunghezza zero, con orientamento
 errato del marker SVG. Corretto nella costruzione del percorso IF comune.
@@ -1028,6 +1028,14 @@ dall’automazione, quindi file esportato non ispezionato in questa revisione.
 
 ### Collegamento dal sito di Informatica
 
-- [ ] Dopo il push della correzione, individuare la navigazione della pagina principale.
-- [ ] Aggiungere il link al laboratorio online nella disposizione esistente.
-- [ ] Verificare generazione dell’indice, tema e pubblicazione automatica.
+- [x] Dopo il push della correzione, individuare la navigazione della pagina principale.
+- [x] Aggiungere il link al laboratorio online nella disposizione esistente.
+- [x] Verificare generazione dell’indice e tema; predisporre la pubblicazione automatica del collegamento.
+
+Link relativo ./cpp-visualizer/ nella navigazione principale, accanto a Lezioni.
+Nessun cambiamento al generatore: collegamento esterno alle sezioni rigenerate.
+Controlli sito/tema, preservazione del link e idempotenza dell’indice superati.
+Anteprima Chrome a 540 px senza overflow; viewport ripristinato. Schermata:
+sito-link-laboratorio.png. Controllo pubblico di destinazione e deploy effettuato
+come ultimo passo, dopo la pipeline Pages. Suite nativa completa non ripetuta:
+modifiche limitate a geometria SVG e link statico; gate Node e WASM automatici.
