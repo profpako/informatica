@@ -1,4 +1,5 @@
 'use strict';
+import {request as requestAPI, storagePrefix, connectionError} from './transport.js';
 const $ = id => document.getElementById(id);
 const code = $('code'), input = $('input'), programName = $('program-name');
 let token = '', examples = [], steps = [], position = 0, timer = null, version = 0, retainedMemory = null;
@@ -8,8 +9,8 @@ let configurationDone;
 const configurationReady = new Promise(resolve => { configurationDone = resolve; });
 const roleLabels = { input: 'Input', output: 'Output', inout: 'Input/Output', work: 'Lavoro' };
 const storage = {
-  get(key) { try { return localStorage.getItem('cppviz-' + key); } catch { return null; } },
-  set(key, value) { try { localStorage.setItem('cppviz-' + key, value); } catch { /* L'editor funziona anche senza storage. */ } }
+  get(key) { try { return localStorage.getItem(storagePrefix + key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(storagePrefix + key, value); } catch { /* L'editor funziona anche senza storage. */ } }
 };
 let mode = 'cpp';
 const flowEditor = new FlowchartEditor($('flow-pane'), {
@@ -18,8 +19,8 @@ const flowEditor = new FlowchartEditor($('flow-pane'), {
   async resolveSource(generated) {
     if (!/^\s*std::decay_t<decltype\(/m.test(generated.code)) return generated;
     await configurationReady;
-    if (!token) throw new Error('Avvia il server locale e ricarica per generare il C++.');
-    const response = await fetch('/api/flowchart-source', {method:'POST', headers:{'Content-Type':'application/json','X-Visualizer-Token':token}, body:JSON.stringify({code:generated.code})});
+    if (!token) throw new Error('Il motore non è pronto. Ricarica la pagina.');
+    const response = await requestAPI('/api/flowchart-source', {method:'POST', headers:{'Content-Type':'application/json','X-Visualizer-Token':token}, body:JSON.stringify({code:generated.code, standard:$('cpp-standard').value})});
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Impossibile generare il C++.');
     if (typeof result.code !== 'string' || result.code.split('\n').length !== generated.code.split('\n').length)
@@ -44,7 +45,7 @@ function setMode(next, initial = false) {
   $('flow-file-actions').hidden = mode !== 'flow';
   $('mode-cpp').setAttribute('aria-pressed', String(mode === 'cpp'));
   $('mode-flow').setAttribute('aria-pressed', String(mode === 'flow'));
-  $('program-language').textContent = mode === 'flow' ? 'Diagramma a blocchi' : 'C++17';
+  $('program-language').textContent = mode === 'flow' ? 'Diagramma a blocchi' : 'C++'+$('cpp-standard').value;
   programName.value = mode === 'flow' ? flowEditor.document.title || '' : storage.get('program-name') || '';
   input.value = storage.get(mode === 'cpp' ? 'input' : 'flow-input') ?? '';
   storage.set('mode', mode);
@@ -396,7 +397,7 @@ function render() {
 }
 function seek(index) { resumeAfterInput = false; pause(); position = Math.max(0, Math.min(steps.length - 1, index)); render(); }
 function cancelSession(session) {
-  return fetch('/api/cancel', {method:'POST', keepalive:true, headers:{'Content-Type':'application/json','X-Visualizer-Token':token}, body:JSON.stringify({session})}).catch(() => {});
+  return requestAPI('/api/cancel', {method:'POST', keepalive:true, headers:{'Content-Type':'application/json','X-Visualizer-Token':token}, body:JSON.stringify({session})}).catch(() => {});
 }
 function cancelManual() {
   if (manualSession) cancelSession(manualSession);
@@ -436,7 +437,7 @@ $('manual-input-form').addEventListener('submit', async event => {
   const requestVersion = version, priorLength = steps.length;
   $('manual-value').disabled = $('submit-manual').disabled = true;
   try {
-    const response = await fetch('/api/input', {method:'POST', headers:{'Content-Type':'application/json','X-Visualizer-Token':token}, body:JSON.stringify({session:manualSession, request:request.number, value:$('manual-value').value})});
+    const response = await requestAPI('/api/input', {method:'POST', headers:{'Content-Type':'application/json','X-Visualizer-Token':token}, body:JSON.stringify({standard:$("cpp-standard").value, session:manualSession, request:request.number, value:$('manual-value').value})});
     const data = await response.json();
     if (requestVersion !== version) {if(data.session)cancelSession(data.session);return;}
     if (!response.ok) throw new Error(data.error || 'Impossibile inviare il valore.');
@@ -485,8 +486,8 @@ $('run').addEventListener('click', async () => {
     const source = generated ? generated.code : code.value;
     if (mode === 'flow') flowEditor.setRunning(true);
     const manual = $('input-mode').value === 'manual';
-    const response = await fetch('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Visualizer-Token': token }, body: JSON.stringify({ code: source, input: manual ? '' : input.value, ...(manual ? {manual:true} : {}), ...(generated ? {flow: generated.flow} : {}) }) }).catch(() => {
-      throw new Error('Server locale non raggiungibile. Avvia avvia.command e tieni aperto il terminale, poi ricarica la pagina e riprova. Codice e input sono conservati.');
+    const response = await requestAPI('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Visualizer-Token': token }, body: JSON.stringify({ standard: $("cpp-standard").value, code: source, input: manual ? '' : input.value, ...(manual ? {manual:true} : {}), ...(generated ? {flow: generated.flow} : {}) }) }).catch(() => {
+      throw new Error(connectionError);
     });
     const data = await response.json();
     if (requestVersion !== version) { if(data.session)cancelSession(data.session); setRunHint('Il codice è cambiato: avvia la nuova versione.'); return; }
@@ -518,7 +519,7 @@ $('cpp-to-flow').addEventListener('click', async () => {
   const requestVersion=version, source=code.value, sourceInput=input.value;
   $('cpp-to-flow').disabled=true; $('cpp-to-flow').textContent='Conversione…'; $('error').hidden=true;
   try {
-    const response=await fetch('/api/import-flowchart',{method:'POST',headers:{'Content-Type':'application/json','X-Visualizer-Token':token},body:JSON.stringify({code:source})});
+    const response=await requestAPI('/api/import-flowchart',{method:'POST',headers:{'Content-Type':'application/json','X-Visualizer-Token':token},body:JSON.stringify({code:source, standard:$("cpp-standard").value})});
     const result=await response.json();
     if(requestVersion!==version)return;
     if(!response.ok)throw new Error(result.error||'Conversione non riuscita.');
@@ -589,8 +590,13 @@ $('cpp-file').addEventListener('change', async () => {
 async function initialize() {
   $('run').disabled = true;
   try {
-    const response = await fetch('/api/config'); if (!response.ok) throw new Error('Configurazione non disponibile.');
+    const response = await requestAPI('/api/config'); if (!response.ok) throw new Error('Configurazione non disponibile.');
     const config = await response.json(); token = config.token; examples = config.examples; configurationDone();
+    const standards = config.standards || ['17'];
+    const savedStandard = storage.get('standard');
+    $('cpp-standard').value = standards.includes(savedStandard) ? savedStandard : '17';
+    $('cpp-standard').disabled = !config.standards;
+    if (!config.standards) $('cpp-standard').title = 'Riavvia il server locale per abilitare la scelta dello standard.';
     examples.forEach((example, i) => { const option = element('option', example.title); option.value = String(i); $('examples').append(option); });
     code.value = storage.get('code') ?? ''; input.value = storage.get('input') ?? '';
     const matching = examples.findIndex(example => example.code === code.value);
@@ -602,6 +608,13 @@ async function initialize() {
     if (storage.get('large') === 'true') { document.body.classList.add('large'); $('projection').setAttribute('aria-pressed', 'true'); }
     setMode(storage.get('mode') === 'flow' ? 'flow' : 'cpp', true);
     updateLines(); $('run').disabled = false; $('cpp-to-flow').disabled = false;
-  } catch (error) { configurationDone(); $('error').textContent = error.message + ' Verifica che il server locale sia attivo.'; $('error').hidden = false; }
+  } catch (error) { configurationDone(); $('error').textContent = error.message + ' ' + connectionError; $('error').hidden = false; }
 }
+$('cpp-standard').addEventListener('change', () => {
+  storage.set('standard', $('cpp-standard').value);
+  invalidate();
+  $('program-language').textContent = mode === 'flow' ? 'Diagramma a blocchi' : 'C++'+$('cpp-standard').value;
+  flowEditor.sourceKey = null;
+  flowEditor.preview();
+});
 initialize();

@@ -2,7 +2,9 @@
 
 ## Motore
 
-Scelta: C++17 compilato da Clang, con strumentazione ricavata dal suo AST JSON.
+Scelta: C++17/20/23 compilato da Clang, con strumentazione ricavata dal suo AST JSON.
+C++17 resta il valore iniziale. Interfaccia e analisi sono condivise fra esecuzione
+locale e WASM; la pipeline pubblica la versione online dagli stessi sorgenti dopo i test.
 Un interprete scritto appositamente richiederebbe di riprodurre conversioni,
 overloading, durata delle variabili e riferimenti; il compilatore mantiene queste
 regole. LLDB richiederebbe permessi di debug e non distingue da solo tutte le

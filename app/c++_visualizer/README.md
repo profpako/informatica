@@ -1,14 +1,37 @@
 # Dentro il codice
 
-Visualizzatore didattico C++17 per le lezioni di Informatica SIA. Il docente può
+Visualizzatore didattico C++17/20/23 per le lezioni di Informatica SIA. Il docente può
 scrivere un programma al momento, eseguirlo e osservare valori, array, riferimenti,
-puntatori e pila delle chiamate. L'esecuzione è locale e non richiede account o rete.
+puntatori e pila delle chiamate. In locale usa Clang sul Mac; online compila ed
+esegue nel browser con WebAssembly. Non richiede un account per l'utilizzo.
+
+## Un'applicazione, due ambienti di esecuzione
+
+Il selettore **Standard** è comune alle due versioni: C++17 iniziale, C++20 o C++23.
+La scelta viene ricordata e vale anche per importazione, generazione dei tipi e
+input manuali. Cambiarla invalida la traccia precedente; non modifica il sorgente.
+Il sottoinsieme didattico supportato resta quello descritto in COSTRUTTI.md.
+
+Editor, flowchart, runtime di osservazione e analisi Python hanno un'unica sorgente
+in questa cartella. `transport.js` usa le API locali; la build online sostituisce
+solo l'adattatore con il Worker WASM. `app.js` viene distribuito senza riscritture.
+
+Dopo un push su **main**, la pipeline del sito verifica interfaccia, conversioni
+e motore WASM; se i test passano pubblica automaticamente l'applicazione a
+https://profpako.github.io/informatica/cpp-visualizer/ insieme alle lezioni.
+Se i test falliscono resta disponibile l'ultima pubblicazione riuscita.
+Le modifiche presenti solo sul computer diventano online dopo il push verificato.
+Il vecchio link `informatica-wasm-lab` porta alla versione condivisa.
+
+Le differenze di esecuzione e le prove automatiche sono documentate in
+[pages-lab/README.md](pages-lab/README.md). Il tag `locale-stabile-2026-10-23`
+conserva la versione precedente all'integrazione.
 
 ## Programmare con i flowchart
 
 La modalità **Flowchart** permette di costruire diagrammi a blocchi con collegamenti
 automatici, dichiarazioni, input/output, decisioni, cicli e chiamate a subroutine.
-Il diagramma genera C++ ed è eseguito dal medesimo motore locale: memoria, console,
+Il diagramma genera C++ ed è eseguito dal motore scelto: memoria, console,
 parametri e passi restano disponibili. Codice C++ e diagramma hanno salvataggi
 separati nel browser; il diagramma può essere salvato e riaperto come file JSON.
 
@@ -123,7 +146,8 @@ selezionata su fondo bianco, anche se parte del disegno è fuori dall'area visib
 Mantiene testo e colori correnti ed esclude i + di modifica. Le dimensioni sono
 limitate a 8192 pixel per lato e 32 megapixel; diagrammi molto grandi vengono ridotti.
 Questo formato JSON è del visualizzatore, non un file nativo di AlgoBuild.
-L'esecuzione richiede il server locale descritto sotto.
+Nella versione locale l'esecuzione richiede il server descritto sotto; online
+avviene nel browser dopo il caricamento dei componenti WASM.
 
 ## Passare fra C++ e flowchart
 

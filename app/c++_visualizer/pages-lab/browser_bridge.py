@@ -21,11 +21,12 @@ class NeedAST(Exception):
     pass
 
 
-def parse_cpp(code):
+def parse_cpp(code, standard='17'):
+    engine.standard_flag(standard)
     source, prefix = engine.prepare(code)
-    if code not in _asts:
+    if (standard, code) not in _asts:
         raise NeedAST(code)
-    return source, prefix, _asts[code]
+    return source, prefix, _asts[(standard, code)]
 
 
 flowchart_import.parse_cpp = parse_cpp
@@ -34,13 +35,15 @@ flowchart_import.parse_cpp = parse_cpp
 def browser_call(operation, payload):
     global _context
     data = json.loads(payload)
+    standard = data.get('standard', '17')
+    engine.standard_flag(standard)
     try:
         if operation == 'source':
-            return json.dumps({'code': flowchart_import.resolve_flowchart_source(data['code'])})
+            return json.dumps({'code': flowchart_import.resolve_flowchart_source(data['code'], standard)})
         if operation == 'import':
-            return json.dumps({'document': flowchart_import.import_flowchart(data['code'])})
+            return json.dumps({'document': flowchart_import.import_flowchart(data['code'], standard)})
         if operation == 'instrument':
-            source, prefix, tree = parse_cpp(data['code'])
+            source, prefix, tree = parse_cpp(data['code'], standard)
             deferred = {}
             flow = data.get('flow')
             if flow is not None:

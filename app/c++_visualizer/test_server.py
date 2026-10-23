@@ -40,7 +40,8 @@ class ServerTests(unittest.TestCase):
         status, body, _ = self.request('GET', '/api/config')
         self.assertEqual(status, 200)
         self.assertEqual(len(json.loads(body)['examples']), 6)
-        for path in ['/flowchart-core.js', '/flowchart-editor.js', '/flowchart.css', '/program-files.js']:
+        self.assertEqual(json.loads(body)['standards'], ['17', '20', '23'])
+        for path in ['/flowchart-core.js', '/flowchart-editor.js', '/flowchart.css', '/program-files.js', '/transport.js']:
             self.assertEqual(self.request('GET', path)[0], 200)
         for path in ['/engine.py', '/runtime.hpp', '/../README.md']:
             self.assertEqual(self.request('GET', path)[0], 404)
@@ -53,12 +54,23 @@ class ServerTests(unittest.TestCase):
         run.assert_not_called()
 
     @patch('server.run_program')
+    def test_standard_is_validated_and_forwarded(self, run):
+        headers = {'Origin': self.origin, 'X-Visualizer-Token': TOKEN, 'Content-Type': 'application/json'}
+        run.return_value = {'steps': [], 'error': '', 'warnings': ''}
+        self.assertEqual(self.request('POST', '/api/run', json.dumps({'code': 'int main(){}', 'standard': '23'}), headers)[0], 200)
+        run.assert_called_once_with('int main(){}', '', flow=None, standard='23')
+        run.reset_mock()
+        for standard in [None, 20, [], '23 -I/private']:
+            self.assertEqual(self.request('POST', '/api/run', json.dumps({'code': 'int main(){}', 'standard': standard}), headers)[0], 400)
+        run.assert_not_called()
+
+    @patch('server.run_program')
     def test_api_success_and_diagnostics(self, run):
         headers = {'Origin': self.origin, 'X-Visualizer-Token': TOKEN, 'Content-Type': 'application/json'}
         run.return_value = {'steps': [], 'error': '', 'warnings': ''}
         status, body, _ = self.request('POST', '/api/run', json.dumps({'code': 'int main(){}', 'input': '5'}), headers)
         self.assertEqual(status, 200)
-        run.assert_called_once_with('int main(){}', '5')
+        run.assert_called_once_with('int main(){}', '5', flow=None, standard='17')
         run.side_effect = CodeError('Errore di compilazione')
         status, body, _ = self.request('POST', '/api/run', '{"code":"x"}', headers)
         self.assertEqual(status, 400)
@@ -71,7 +83,7 @@ class ServerTests(unittest.TestCase):
         flow = {'deferred': [{'line': 2}]}
         status, _, _ = self.request('POST', '/api/run', json.dumps({'code':'int main(){}','flow':flow}), headers)
         self.assertEqual(status, 200)
-        run.assert_called_once_with('int main(){}', '', flow=flow)
+        run.assert_called_once_with('int main(){}', '', flow=flow, standard='17')
 
     @patch('server.import_flowchart')
     def test_cpp_import_authentication_success_and_diagnostics(self, convert):
@@ -82,7 +94,7 @@ class ServerTests(unittest.TestCase):
         convert.return_value={'format':'dentro-il-codice-flowchart','version':2,'functions':[]}
         status, response, _=self.request('POST','/api/import-flowchart',body,headers)
         self.assertEqual(status,200);self.assertEqual(json.loads(response)['document'],convert.return_value)
-        convert.assert_called_once_with('int main(){}')
+        convert.assert_called_once_with('int main(){}', standard='17')
         convert.side_effect=CodeError('Riga 4: switch non importabile.')
         status, response, _=self.request('POST','/api/import-flowchart',body,headers)
         self.assertEqual(status,400);self.assertIn('Riga 4',json.loads(response)['error'])
@@ -96,7 +108,7 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(self.request('POST', path, '{}')[0], 403)
         start.return_value = {'steps': [], 'error': '', 'session': 'session-test'}
         self.assertEqual(self.request('POST', '/api/run', json.dumps({'code':'int main(){}','manual':True}), headers)[0], 200)
-        start.assert_called_once_with('int main(){}', None)
+        start.assert_called_once_with('int main(){}', None, standard='17')
         answer.return_value = {'steps': [], 'error':'', 'session':None}
         self.assertEqual(self.request('POST', '/api/input', json.dumps({'session':'session-test','request':1,'value':'4'}), headers)[0], 200)
         answer.assert_called_once_with('session-test', 1, '4')

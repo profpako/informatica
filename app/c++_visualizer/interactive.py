@@ -4,17 +4,17 @@ import secrets
 import threading
 import time
 
-from engine import CodeError, run_program
+from engine import CodeError, run_program, standard_flag
 
 sessions = {}
 
 
 class Session:
-    def __init__(self, code, flow):
+    def __init__(self, code, flow, standard):
         self.events, self.answers = queue.Queue(), queue.Queue()
         self.pending, self.bytes = None, 0
         self.touched = time.monotonic()
-        self.thread = threading.Thread(target=self.run, args=(code, flow), daemon=True)
+        self.thread = threading.Thread(target=self.run, args=(code, flow, standard), daemon=True)
         self.thread.start()
 
     def request(self, result):
@@ -27,9 +27,9 @@ class Session:
             raise CodeError('Esecuzione manuale annullata.')
         return answer
 
-    def run(self, code, flow):
+    def run(self, code, flow, standard):
         try:
-            self.events.put(run_program(code, flow=flow, interactive=self.request))
+            self.events.put(run_program(code, flow=flow, interactive=self.request, standard=standard))
         except Exception as error:
             self.events.put(error)
 
@@ -75,11 +75,12 @@ def response(ident, session, result):
     return {**result, 'session': ident if session.pending else None}
 
 
-def start(code, flow=None):
+def start(code, flow=None, standard='17'):
+    standard_flag(standard)
     cleanup()
     if len(sessions) >= 4:
         raise CodeError('Sono già aperte quattro esecuzioni manuali. Termina o annulla una sessione.')
-    ident, session = secrets.token_urlsafe(24), Session(code, flow)
+    ident, session = secrets.token_urlsafe(24), Session(code, flow, standard)
     sessions[ident] = session
     try:
         return response(ident, session, session.result())

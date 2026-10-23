@@ -6,7 +6,7 @@ from pathlib import Path
 import secrets
 from urllib.parse import urlsplit
 
-from engine import CodeError, run_program
+from engine import CodeError, run_program, STANDARDS, standard_flag
 from flowchart_import import import_flowchart, resolve_flowchart_source
 import interactive
 
@@ -38,10 +38,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(403, {'error': 'Host non consentito.'})
         path = urlsplit(self.path).path
         if path == '/api/config':
-            return self.send(200, {'token': TOKEN, 'examples': json.loads((ROOT / 'examples.json').read_text())})
+            return self.send(200, {'token': TOKEN, 'standards': STANDARDS, 'examples': json.loads((ROOT / 'examples.json').read_text())})
         assets = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript; charset=utf-8'), '/style.css': ('style.css', 'text/css; charset=utf-8')}
         assets.update({f'/{name}': (name, 'text/css; charset=utf-8' if name.endswith('.css') else 'text/javascript; charset=utf-8')
-                       for name in ['flowchart-core.js', 'flowchart-editor.js', 'flowchart.css', 'program-files.js']})
+                       for name in ['flowchart-core.js', 'flowchart-editor.js', 'flowchart.css', 'program-files.js', 'transport.js']})
         if path not in assets:
             return self.send(404, {'error': 'Risorsa non trovata.'})
         name, mime = assets[path]
@@ -60,19 +60,21 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(length))
             if not isinstance(data, dict):
                 raise ValueError('Richiesta non valida.')
+            standard = data.get('standard', '17')
+            standard_flag(standard)
             if self.path == '/api/import-flowchart':
-                result = {'document':import_flowchart(data.get('code'))}
+                result = {'document':import_flowchart(data.get('code'), standard=standard)}
             elif self.path == '/api/flowchart-source':
-                result = {'code':resolve_flowchart_source(data.get('code'))}
+                result = {'code':resolve_flowchart_source(data.get('code'), standard=standard)}
             elif self.path == '/api/input':
                 result = interactive.answer(data.get('session'), data.get('request'), data.get('value'))
             elif self.path == '/api/cancel':
                 interactive.cancel(data.get('session')); result = {'cancelled': True}
             elif data.get('manual') is True:
-                result = interactive.start(data.get('code'), data.get('flow'))
+                result = interactive.start(data.get('code'), data.get('flow'), standard=standard)
             else:
                 arguments = (data.get('code'), data.get('input', ''))
-                result = run_program(*arguments, flow=data['flow']) if 'flow' in data else run_program(*arguments)
+                result = run_program(*arguments, flow=data.get('flow'), standard=standard)
             self.send(200, result)
         except (json.JSONDecodeError, ValueError, CodeError) as error:
             self.send(400, {'error': str(error)})

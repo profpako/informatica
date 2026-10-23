@@ -955,3 +955,36 @@ Verifiche concluse:
   di automazione intercettano copia/incolla: non confermata la combinazione
   con una tastiera fisica. Verificati i percorsi equivalenti con pulsanti/menu.
 - Non ripetuta la suite C++ completa per questa revisione di editor/rendering.
+
+### Standard C++ condivisi e aggiornamento online automatico
+
+- [x] Integrare il sorgente del prototipo in main, conservando il tag stabile.
+- [x] Rendere C++17/20/23 selezionabili anche in locale (predefinito 17).
+  - [x] Validazione unica e propagazione a compilazione, importazione, tipi e input manuali.
+  - [x] Selettore condiviso, persistenza, invalidazione della traccia al cambio.
+- [x] Eliminare la riscrittura del JavaScript locale nella build Pages.
+  - [x] Interfaccia e motore didattico unici; solo trasporto/esecuzione diversi.
+  - [x] Cache coerente degli asset e build riproducibile con versioni fissate.
+- [x] Ampliare le prove online: input, funzioni, array, puntatori, condizioni, errori, limiti e conversioni.
+  - [x] Verificare i tre standard e i controlli UB/bounds disponibili in WASM.
+  - [x] Eseguire la suite locale completa e test automatici del motore WASM.
+- [ ] Pubblicare dalla pipeline Pages del repository informatica solo dopo i test.
+  - [ ] Mantenere il vecchio link con un rinvio alla versione condivisa.
+  - [x] Nessun token fra repository né servizi a pagamento.
+- [ ] Verificare browser locale/online, documentare risultati e pubblicare.
+
+Preferenza confermata: aggiornamento online automatico dopo i test su main.
+Sorgente unico in app/c++_visualizer; la build statica viene inclusa nel sito
+delle lezioni in cpp-visualizer, senza cambiare le altre pagine. Il vecchio
+sito di prova porterà alla nuova destinazione. Il tag locale-stabile-2026-10-23
+resta il riferimento per il ripristino.
+
+Verifiche locali concluse: 84 test nativi in 143,9 s, 37 casi WASM sullo
+stesso Worker distribuito, 3 test bridge, test Node flowchart/file e sintassi.
+WASM: attivati undefined/bounds sanitizer con trap; verificati divisione per
+zero, overflow e shift non valido. Corrette richieste dopo fine sessione e
+annullamenti scaduti che potevano cancellare la sessione successiva.
+Browser locale: C++23 con puntatori/array produce 11 e 8; cambio a C++20
+invalida la traccia e viene ricordato al ricaricamento. Server abituale
+riavviato dopo aver verificato assenza di input pendenti, PID 46669.
+La pipeline e il rinvio del vecchio link devono ancora essere verificati online.

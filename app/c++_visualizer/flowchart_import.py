@@ -6,19 +6,20 @@ import shutil
 import subprocess
 import tempfile
 
-from engine import CodeError, Instrumenter, TOKENS, bounds, diagnostic, prepare, walk
+from engine import CodeError, Instrumenter, TOKENS, bounds, diagnostic, prepare, walk, standard_flag
 
 
-def parse_cpp(code):
+def parse_cpp(code, standard='17'):
+    language_flag = standard_flag(standard)
     compiler = shutil.which('clang++')
     if not compiler:
         raise CodeError('La conversione richiede clang++, come il visualizzatore C++.')
     source, prefix_lines = prepare(code)
-    with tempfile.TemporaryDirectory(prefix='cppviz-import-', dir='/private/tmp') as folder:
+    with tempfile.TemporaryDirectory(prefix='cppviz-import-', dir='/private/tmp' if Path('/private/tmp').is_dir() else None) as folder:
         path = Path(folder) / 'lezione.cpp'
         path.write_bytes(source)
         try:
-            result = subprocess.run([compiler, '-std=c++17', '-Wno-return-type', '-Xclang', '-ast-dump=json',
+            result = subprocess.run([compiler, language_flag, '-Wno-return-type', '-pedantic-errors', '-Xclang', '-ast-dump=json',
                                      '-Xclang', '-ast-dump-filter=__cv_user', '-fsyntax-only', str(path)],
                                     capture_output=True, text=True, timeout=20)
         except subprocess.TimeoutExpired:
@@ -32,17 +33,17 @@ def parse_cpp(code):
     return source, prefix_lines, tree
 
 
-def import_flowchart(code):
-    source, prefix_lines, tree = parse_cpp(code)
+def import_flowchart(code, standard='17'):
+    source, prefix_lines, tree = parse_cpp(code, standard)
     instrumenter = Instrumenter(source, prefix_lines, tree)
     instrumenter.validate()
     return Importer(source, prefix_lines, tree).build()
 
 
-def resolve_flowchart_source(code):
+def resolve_flowchart_source(code, standard='17'):
     for _ in range(3):
         try:
-            source, prefix_lines, tree = parse_cpp(code)
+            source, prefix_lines, tree = parse_cpp(code, standard)
         except CodeError as error:
             messages = [line for line in str(error).splitlines() if line.startswith('Riga ')]
             if messages:

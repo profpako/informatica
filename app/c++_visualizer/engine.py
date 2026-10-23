@@ -1,4 +1,4 @@
-"""Strumentazione C++17 tramite l'AST di Clang, senza un parser C++ alternativo."""
+"""Strumentazione C++ tramite l'AST di Clang, senza un parser C++ alternativo."""
 import json
 import os
 from pathlib import Path
@@ -17,6 +17,15 @@ TOKENS = re.compile(r'//[^\n]*|/\*[\s\S]*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\]
 
 class CodeError(Exception):
     pass
+
+
+STANDARDS = ('17', '20', '23')
+
+
+def standard_flag(standard='17'):
+    if not isinstance(standard, str) or standard not in STANDARDS:
+        raise CodeError('Standard non valido. Scegli C++17, C++20 o C++23.')
+    return '-std=c++' + standard
 
 
 def walk(node):
@@ -532,7 +541,8 @@ def execute_interactive(command, options, trace_path, interactive, decorate):
         return subprocess.CompletedProcess(command, process.returncode)
 
 
-def run_program(code, user_input="", flow=None, interactive=None):
+def run_program(code, user_input="", flow=None, interactive=None, standard='17'):
+    language_flag = standard_flag(standard)
     if not isinstance(user_input, str) or len(user_input.encode()) > 10000:
         raise CodeError("Input troppo lungo: massimo 10.000 byte.")
     compiler = shutil.which("clang++")
@@ -555,7 +565,7 @@ def run_program(code, user_input="", flow=None, interactive=None):
         directory = Path(folder)
         path = directory / "lezione.cpp"
         path.write_bytes(source)
-        base = [compiler, "-std=c++17", "-fno-color-diagnostics", "-Werror=return-type", "-pedantic-errors"]
+        base = [compiler, language_flag, "-fno-color-diagnostics", "-Werror=return-type", "-pedantic-errors"]
         try:
             parsed = subprocess.run(base + ["-Wno-return-type", "-Xclang", "-ast-dump=json", "-Xclang", "-ast-dump-filter=__cv_user", "-fsyntax-only", str(path)],
                                     capture_output=True, text=True, timeout=20)

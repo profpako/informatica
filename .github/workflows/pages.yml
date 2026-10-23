@@ -20,6 +20,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.x'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
       - uses: actions/configure-pages@v5
       - name: Verifica e aggiorna l'indice
         working-directory: sito
@@ -27,9 +30,20 @@ jobs:
           python3 scripts/check_index.py
           node scripts/check_theme.js
           python3 scripts/build_index.py
+      - name: Costruisci e verifica il visualizzatore condiviso
+        working-directory: app/c++_visualizer
+        run: |
+          node test_flowchart.cjs
+          node test_program_files.cjs
+          python3 pages-lab/test_bridge.py
+          python3 pages-lab/build.py
+          node pages-lab/test_wasm.mjs
+      - name: Includi l'applicazione online verificata
+        run: cp -R app/c++_visualizer/pages-lab/dist sito/cpp-visualizer
       - uses: actions/upload-pages-artifact@v4
         with:
           path: 'sito'
+          retention-days: 1
 
   deploy:
     needs: build

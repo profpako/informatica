@@ -27,3 +27,5 @@ body.flow-mode main{grid-template-columns:minmax(0,1.65fr) minmax(430px,1fr)}
 
 .workspace .panel-heading{min-height:64px;padding:12px 16px;flex-direction:row;flex-wrap:wrap;align-items:center}.workspace .example-label{margin-left:auto}body.flow-mode .program-file{grid-template-columns:auto minmax(120px,1fr) auto}.program-file label{white-space:nowrap}
 @media(max-width:640px){body.flow-mode .program-file{grid-template-columns:auto minmax(0,1fr)}}
+
+.standard-choice{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px;color:var(--muted)}.standard-choice select{border:1px solid var(--line);border-radius:5px;background:white;color:var(--ink);padding:6px;font:inherit}.top-actions{flex-wrap:wrap}

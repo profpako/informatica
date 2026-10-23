@@ -5,17 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Dentro il codice — Laboratorio C++</title>
-  <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/flowchart.css">
-  <script src="/flowchart-core.js" defer></script>
-  <script src="/program-files.js" defer></script>
-  <script src="/flowchart-editor.js" defer></script>
-  <script src="/app.js" defer></script>
+  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./flowchart.css">
+  <script src="./flowchart-core.js" defer></script>
+  <script src="./program-files.js" defer></script>
+  <script src="./flowchart-editor.js" defer></script>
+  <script type="module" src="./app.js"></script>
 </head>
 <body>
   <header class="topbar">
     <div class="identity"><span class="brand" aria-hidden="true">{ }</span><div><h1>Dentro il codice</h1><p>Laboratorio di memoria C++</p></div></div>
-    <div class="top-actions"><span class="local"><span aria-hidden="true">●</span> Sul tuo computer</span><button id="projection" type="button" aria-pressed="false">Testo grande</button><button id="help-toggle" type="button" aria-expanded="false" aria-controls="help">Guida</button></div>
+    <div class="top-actions"><span class="local"><span aria-hidden="true">●</span> Sul tuo computer</span><label class="standard-choice">Standard <select id="cpp-standard" aria-label="Standard C++"><option value="17">C++17</option><option value="20">C++20</option><option value="23">C++23</option></select></label><button id="projection" type="button" aria-pressed="false">Testo grande</button><button id="help-toggle" type="button" aria-expanded="false" aria-controls="help">Guida</button></div>
   </header>
   <aside id="help" hidden>
     <h2>Dal codice alla memoria</h2>

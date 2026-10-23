@@ -16,8 +16,8 @@ def call(operation, data):
         result = json.loads(bridge.browser_call(operation, json.dumps(data)))
         if 'parse' not in result:
             return result
-        _, _, tree = native_parse(result['parse'])
-        bridge._asts[result['parse']] = tree
+        _, _, tree = native_parse(result['parse'], data.get('standard', '17'))
+        bridge._asts[(data.get('standard', '17'), result['parse'])] = tree
     raise AssertionError('Troppi passaggi di analisi')
 
 

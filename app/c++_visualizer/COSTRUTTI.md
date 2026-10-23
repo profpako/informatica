@@ -3,12 +3,14 @@
 ## Stato
 
 La prima versione locale è implementata e verificata su macOS con Apple Clang 21.
-Il motore usa l'AST e il compilatore C++17 reali, con punti di osservazione per
+Il motore usa l'AST e il compilatore Clang reali, con punti di osservazione per
 registrare memoria, console e chiamate. I test del motore e le prove nel browser
 sono riportati sotto; non viene promessa compatibilità con tutto il C++.
 
 Le convenzioni sono ricavate da [ANALISI_DIDATTICA.md](ANALISI_DIDATTICA.md).
-Il motore usa C++17. Non è richiesta una
+Il selettore usa C++17 come impostazione iniziale e permette C++20/C++23,
+in locale e online. Selezionare lo standard non estende automaticamente
+i costrutti visualizzabili. Non è richiesta una
 riscrittura del codice del docente in un linguaggio di simulazione.
 
 ## Nucleo della prima versione
@@ -51,7 +53,7 @@ I limiti operativi completi sono nel [README.md](README.md).
 | File di testo e binari | Esclusi dalla prima versione; richiedono gestione dei dati e degli effetti esterni |
 | `vector`, `map`, algoritmi, lambda e metodi | Esclusi dalla prima versione; compilabilità e visualizzazione delle strutture sono verifiche distinte |
 | Heap, `new`/`delete`, puntatori avanzati | Esclusi dalla prima versione; i puntatori di base del nucleo si riferiscono a variabili e array esistenti |
-| Inizializzatori con designatori `.campo = ...` | Esclusi dalla base C++17; sono un costrutto standard da C++20 |
+| Inizializzatori con designatori `.campo = ...` | Standard da C++20; la visualizzazione richiede struct/classi, ancora escluse |
 | Classi avanzate, ereditarietà, eccezioni, template scritti dal docente, concorrenza | Fuori dal perimetro iniziale |
 
 Un compilatore reale può accettare costrutti esterni al perimetro. Questo non
