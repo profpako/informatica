@@ -1009,3 +1009,25 @@ ancora basato su replay deterministico, come documentato nel README Pages.
 - [x] Verificare il testo; pubblicazione affidata alla pipeline automatica su main.
 
 Controllo puntuale del testo e diff; nessuna modifica alla logica.
+
+### Allineamento della freccia nei rami IF
+
+- [x] Riprodurre la punta orizzontale su un ramo IF che entra in un blocco.
+- [x] Correggere il percorso alla fonte e aggiungere una prova mirata.
+- [x] Verificare rami vuoti/popolati, cicli esistenti e resa nel browser.
+- [ ] Pubblicare la correzione condivisa e controllare la pipeline.
+
+Causa: ultimo segmento del ramo popolato di lunghezza zero, con orientamento
+errato del marker SVG. Corretto nella costruzione del percorso IF comune.
+Prova mirata fallita prima della modifica e superata dopo: Vero/Falso con
+quattro combinazioni di rami vuoti/popolati. Gate Node flowchart/file,
+sintassi e diff superati; browser con entrambi i rami popolati e punta blu
+verticale verificato. Schermata: flowchart-if-frecce-allineate.png.
+Esportazione PNG conclusa nell’interfaccia; evento download non restituito
+dall’automazione, quindi file esportato non ispezionato in questa revisione.
+
+### Collegamento dal sito di Informatica
+
+- [ ] Dopo il push della correzione, individuare la navigazione della pagina principale.
+- [ ] Aggiungere il link al laboratorio online nella disposizione esistente.
+- [ ] Verificare generazione dell’indice, tema e pubblicazione automatica.

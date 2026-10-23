@@ -434,7 +434,9 @@ const FlowchartCore = (() => {
           const join = addNode(n.id+':merge',x,y+size.height-12,'join','',n.id);
           for (const [outcome, bx, result, key] of [['true',leftX,left,'then'],['false',rightX,right,'else']]) {
             const destination = result.first ? byId(result.first) : join;
-            edge(n.id,destination.id,[[x+(outcome==='true'?-120:120),y+45],[bx,y+45],[bx,destination.y],[destination.x,destination.y]],n.id,outcome,outcome==='true'?'Vero':'Falso',position(n.id,key,0));
+            const points = [[x+(outcome==='true'?-120:120),y+45],[bx,y+45],[bx,destination.y]];
+            if(!result.first)points.push([destination.x,destination.y]);
+            edge(n.id,destination.id,points,n.id,outcome,outcome==='true'?'Vero':'Falso',position(n.id,key,0));
             if (result.tail) { const t=byId(result.tail); edge(t.id,join.id,[[t.x,t.y+t.height],[t.x,join.y],[x,join.y]],null,null,'',position(n.id,key,n[key].length)); }
           }
           exit = left.first && !left.tail && right.first && !right.tail ? null : join.id;

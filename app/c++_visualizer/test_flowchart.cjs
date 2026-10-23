@@ -210,6 +210,20 @@ for(const outcome of [true,false]) {
   assert.equal(emptyChoiceGraph.edges[path.at(-1)].to,destination.id);
 }
 assert.deepEqual(C.pathBetween(emptyChoiceGraph,destination.id,emptyIf.id),[]);
+for(const [hasThen,hasElse] of [[false,false],[true,false],[false,true],[true,true]]) {
+  const branches=C.blank(), choice=make('if',{condition:'true',
+    then:hasThen?[make('output',{expression:'1'})]:[],else:hasElse?[make('output',{expression:'2'})]:[]});
+  branches.functions[0].body=[choice];
+  const graph=C.layout(branches,'main'), drawing=C.drawingGraph(graph);
+  for(const [outcome,populated] of [['true',hasThen],['false',hasElse]]) {
+    const edge=drawing.edges.find(edge=>edge.from===choice.id&&edge.outcome===outcome);
+    if(populated) {
+      const points=edge.segments.at(-1).points, tip=points.at(-1), before=points.at(-2);
+      assert.equal(edge.endArrow,true);
+      assert.equal(before[0],tip[0]);assert.ok(before[1]<tip[1],'La freccia IF deve entrare verticalmente nel blocco');
+    } else assert.equal(edge.to,choice.id+':merge');
+  }
+}
 const emptyCycle=C.blank(), cycle=make('while',{condition:'true'});emptyCycle.functions[0].body=[cycle];
 const forRouting=C.blank(), forEmpty=make('for',{condition:'i < 2'});forRouting.functions[0].body=[forEmpty];
 const routingGraph=C.layout(forRouting,'main');
