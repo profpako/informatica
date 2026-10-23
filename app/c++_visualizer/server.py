@@ -7,7 +7,7 @@ import secrets
 from urllib.parse import urlsplit
 
 from engine import CodeError, run_program
-from flowchart_import import import_flowchart
+from flowchart_import import import_flowchart, resolve_flowchart_source
 import interactive
 
 ROOT = Path(__file__).resolve().parent
@@ -51,7 +51,7 @@ class Handler(BaseHTTPRequestHandler):
         origins = {f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}'}
         if not self.valid_host() or self.headers.get('Origin') not in origins or not secrets.compare_digest(self.headers.get('X-Visualizer-Token', ''), TOKEN):
             return self.send(403, {'error': 'Richiesta non autorizzata. Ricarica la pagina locale.'})
-        if self.path not in {'/api/run','/api/import-flowchart','/api/input','/api/cancel'}:
+        if self.path not in {'/api/run','/api/import-flowchart','/api/flowchart-source','/api/input','/api/cancel'}:
             return self.send(404, {'error': 'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length', '0'))
@@ -62,6 +62,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Richiesta non valida.')
             if self.path == '/api/import-flowchart':
                 result = {'document':import_flowchart(data.get('code'))}
+            elif self.path == '/api/flowchart-source':
+                result = {'code':resolve_flowchart_source(data.get('code'))}
             elif self.path == '/api/input':
                 result = interactive.answer(data.get('session'), data.get('request'), data.get('value'))
             elif self.path == '/api/cancel':

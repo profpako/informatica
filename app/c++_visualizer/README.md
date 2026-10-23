@@ -102,6 +102,15 @@ L'esecuzione richiede il server locale descritto sotto.
   Il pulsante di modalità **C++** torna al sorgente originale conservato: le modifiche
   successive al diagramma non sovrascrivono automaticamente quell'editor.
 
+Il codice generato usa dichiarazioni esplicite, per esempio `int i;` e
+`double area = base * altezza;`, senza template di deduzione. Il compilatore
+individua i tipi senza eseguire le espressioni. Gli include vengono aggiunti solo
+quando usati: iostream per cin/cout, string per le stringhe, iomanip per le
+formattazioni. In main non viene aggiunto `return 0;`; un blocco Restituisci
+inserito dal docente rimane nel sorgente. La generazione dei tipi può richiedere
+un breve momento; download ed esecuzione attendono lo stesso sorgente risolto.
+
+
 I diagrammi importati da C++ riportano una nota: conservano gli ambiti C++, comprese
 omonimie nei blocchi, dichiarazioni di array/costanti/riferimenti nei rami e contatori
 locali al FOR. Le dichiarazioni restano esplicite. Questo permette di osservare lo
@@ -362,7 +371,7 @@ didattico del docente, non un servizio pubblico per eseguire sorgenti anonimi.
 ## Verifiche
 
 ```sh
-python3 -m unittest test_engine test_server test_roles test_flowchart_engine test_flowchart_import test_interactive -v
+python3 -m unittest test_engine test_server test_roles test_flowchart_engine test_flowchart_import test_interactive test_flowchart_source -v
 node test_flowchart.cjs
 node test_program_files.cjs
 node --check app.js

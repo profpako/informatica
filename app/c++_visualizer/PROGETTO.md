@@ -126,8 +126,11 @@ risultato non compare prematuramente durante il calcolo. Cin concatenato e getli
 mantengono la forma di lettura originale. Gli esclusi producono diagnosi, non
 traduzioni approssimate. I diagrammi manuali mantengono la durata di subroutine.
 
-L'inferenza usa std::decay_t<decltype(espressione)> e il tipo canonico di Clang,
-senza rivalutare l'espressione. Gli scalari nati dentro rami/cicli hanno storage
+La deduzione dei tipi usa l'AST di Clang, senza rivalutare le espressioni. Una
+bozza interna permette al compilatore di individuare il tipo: prima di mostrare,
+scaricare o eseguire il C++, le dichiarazioni vengono sostituite con int, float,
+double, char, bool, string o puntatori semplici. La normalizzazione non cambia
+il numero delle righe, quindi mappa blocchi e metadati restano validi. Gli scalari nati dentro rami/cicli hanno storage
 nativo anticipato prima della struttura che li contiene, per mantenere durata di
 subroutine. Metadati opzionali e validati dell'API identificano queste dichiarazioni:
 non generano passi e i monitor restano inattivi finché una scrittura o dichiarazione
@@ -187,3 +190,12 @@ identificatori casuali e richieste numerate per evitare invii duplicati. Origine
 host, token, sandbox e limiti restano applicati. Le attese utente hanno scadenza di
 10 minuti; l'elaborazione tra risposte conserva il limite di tempo. Annullamento,
 scadenza e chiusura fermano il processo e rimuovono i temporanei.
+
+
+Il sorgente didattico include soltanto gli header utilizzati: iostream per la
+console, string per le stringhe, iomanip per setw/setprecision. Non espone librerie
+di supporto alla deduzione dei tipi. In main non viene aggiunto un return 0:
+rimangono soltanto i return inseriti nei blocchi. Il ritorno implicito di main è
+gestito nativamente dal C++; il wrapper tecnico dell'osservazione resta interno.
+La generazione risolta è riusata finché il diagramma non cambia; esecuzione e
+salvataggio attendono il risultato corretto e ignorano generazioni superate.

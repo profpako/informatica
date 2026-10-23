@@ -714,3 +714,44 @@ al termine della revisione.
 Server abituale aggiornato: PID 38963 sulla porta 8765. Verificati il nuovo asset
 program-files.js e il percorso reale API avvio manuale → richiesta n → risposta 9
 → console «9\n18», con sessione conclusa. Server temporaneo 18779 fermato.
+
+## C++ generato coerente con lo stile del docente
+
+- [x] Includere solo gli header effettivamente usati nel programma generato.
+- [x] Mostrare e scaricare dichiarazioni con tipi espliciti (int, double, string,
+  ecc.), senza std::decay_t/decltype o altre strutture tecniche di deduzione.
+  - [x] Usare Clang per risolvere correttamente i tipi delle espressioni C++,
+    senza rivalutare chiamate né introdurre un secondo sistema di tipi.
+  - [x] Mantenere mappa blocchi/righe, ambiti e creazione differita delle variabili.
+  - [x] Gestire attesa/errore della generazione prima di esecuzione o download.
+- [x] Omettere il return 0 automatico nel main; conservare i return scelti nei blocchi.
+- [x] Verificare sorgente mostrato/scaricato, compilazione C++ autonoma e runtime.
+- [x] Aggiornare guida/progetto, riavviare il server e preparare le correzioni per la pubblicazione richiesta.
+
+Il problema attuale è nel generatore: aggiunge quattro include fissi ed espone nel
+sorgente didattico la deduzione tecnica dei tipi usata per le variabili automatiche.
+L'analisi Clang già disponibile può trasformare queste dichiarazioni in tipi
+concreti prima di mostrare, scaricare o eseguire il programma.
+
+
+Verifiche:
+- 79 test Python superati in 130,561 s, inclusi cinque nuovi casi sul sorgente
+  risolto e l'API autenticata. La suite Flowchart esegue ora i sorgenti con tipi
+  espliciti, non le bozze di deduzione.
+- Provate promozioni int/float/double, char/bool/string, divisione intera e reale,
+  deduzione di puntatori, chiamate con effetti eseguite una sola volta, mappa delle
+  righe invariata, header minimi ed esclusione delle parole nelle stringhe letterali.
+- Compilato autonomamente con Clang un file esportabile con FOR, solo iostream e
+  nessun return nel main: output 0/1/2 corretto; stessa esecuzione nel visualizzatore.
+- Chrome: esempio area più FOR con contatore automatico, int i esplicito, solo
+  iostream, assenza di type_traits/decltype e di return aggiunti al main. File
+  scaricati e letti dal filesystem, anche subito dopo la ricarica del diagramma.
+  Esecuzione con 4 e 6: area 24 e contatore finale 3; selezione FOR→tre righe C++
+  ancora corretta. Anteprima flowchart-cpp-semplice.png.
+- I return scritti nei blocchi sono conservati. La generazione aspetta la
+  configurazione locale, riusa i risultati e impedisce download di bozze tecniche.
+- Chrome: errore su sconosciuta mostrato con riga e nome, senza dichiarazioni
+  tecniche; dopo la correzione, esecuzione avviata subito e completata correttamente.
+- Server abituale riavviato, PID 40689 sulla porta 8765. API risoluzione + esecuzione
+  provate con array e FOR: solo iostream, int i, nessun return automatico e output 2 6.
+  Server temporaneo 18780 fermato; controlli Node/sintassi/diff superati.

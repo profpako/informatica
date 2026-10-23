@@ -163,7 +163,6 @@ const FlowchartCore = (() => {
     }
     const lines = [], lineMap = [null], deferred = [];
     const emit = (line, fn, node, phase = 'node') => { lines.push(line); lineMap.push(fn ? { fn: fn.id, functionName: fn.name, node, phase } : null); return lines.length; };
-    emit('#include <iostream>'); emit('#include <string>'); emit('#include <iomanip>'); emit('#include <type_traits>'); emit('using namespace std;'); emit('');
     const ordered = document.functions.filter(fn => fn.id !== 'main').concat(functions.get('main'));
     for (const fn of ordered.filter(fn => fn.id !== 'main')) emit(signature(fn) + ';');
     let symbols, plans, hoists;
@@ -184,8 +183,9 @@ const FlowchartCore = (() => {
       if(cppScope)return {source,item:null};
       if (allowDeclaration) source = source.replace(/^int\s+/, ''); // Compatibilità con i primi diagrammi salvati.
       const match = /^([A-Za-z_]\w*)\s*=(?!=)([\s\S]+)$/.exec(source);
+      // Solo bozza interna: Clang risolve il tipo prima di anteprima, download ed esecuzione.
       const item = match ? register(match[1], `std::decay_t<decltype(${stringValue(match[2].trim())})>`, node, depth, root) : null;
-      return { source: match ? `${match[1]} = ${stringValue(match[2].trim())}` : source, item };
+      return { source: match ? `${match[1]} = ${match[2].trim()}` : source, item };
     }
     function analyze(list, depth, root) {
       for (const node of list) {
@@ -293,10 +293,21 @@ const FlowchartCore = (() => {
       for (const node of fn.body) analyze([node], 1, node.id);
       emit(signature(fn) + ' {', fn, fn.id + ':start', 'start');
       sequence(fn.body, fn, 1);
-      if (fn.id === 'main') emit('    return 0;', fn, fn.id + ':end', 'end');
       emit('}', fn, fn.id + ':end', 'end'); emit('');
     }
-    const code = lines.join('\n');
+    const body = lines.join('\n');
+    const tokens = body.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, ' ');
+    const headers = [];
+    if (/\b(cin|cout)\b/.test(tokens)) headers.push('#include <iostream>');
+    if (/\bstring\b/.test(tokens)) headers.push('#include <string>');
+    if (/\b(setw|setprecision)\s*\(/.test(tokens)) headers.push('#include <iomanip>');
+    if (headers.length) headers.push('using namespace std;', '');
+    const code = headers.concat(lines).join('\n');
+    lineMap.splice(1, 0, ...headers.map(() => null));
+    for (const descriptor of deferred) {
+      descriptor.line += headers.length;
+      if (descriptor.activate) descriptor.activate += headers.length;
+    }
     if (new TextEncoder().encode(code).length > 30000) fail('Il diagramma genera più di 30.000 byte di C++: riduci i blocchi.');
     return { code, lineMap, flow: { deferred } };
   }

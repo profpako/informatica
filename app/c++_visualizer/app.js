@@ -4,6 +4,8 @@ const code = $('code'), input = $('input'), programName = $('program-name');
 let token = '', examples = [], steps = [], position = 0, timer = null, version = 0, retainedMemory = null;
 let selectedVariable = null, lastRenderedStep = null, retainedCalls = null;
 let manualSession = null, resumeAfterInput = false;
+let configurationDone;
+const configurationReady = new Promise(resolve => { configurationDone = resolve; });
 const roleLabels = { input: 'Input', output: 'Output', inout: 'Input/Output', work: 'Lavoro' };
 const storage = {
   get(key) { try { return localStorage.getItem('cppviz-' + key); } catch { return null; } },
@@ -12,6 +14,17 @@ const storage = {
 let mode = 'cpp';
 const flowEditor = new FlowchartEditor($('flow-pane'), {
   sourceRoot: $('flow-code-pane'),
+  async resolveSource(generated) {
+    if (!/^\s*std::decay_t<decltype\(/m.test(generated.code)) return generated;
+    await configurationReady;
+    if (!token) throw new Error('Avvia il server locale e ricarica per generare il C++.');
+    const response = await fetch('/api/flowchart-source', {method:'POST', headers:{'Content-Type':'application/json','X-Visualizer-Token':token}, body:JSON.stringify({code:generated.code})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Impossibile generare il C++.');
+    if (typeof result.code !== 'string' || result.code.split('\n').length !== generated.code.split('\n').length)
+      throw new Error('Sorgente generato non valido: la mappa delle righe non coincide.');
+    return {...generated, code:result.code};
+  },
   saved: storage.get('flowchart'),
   onChange(document, metadataOnly = false) {
     storage.set('flowchart', document);
@@ -455,7 +468,7 @@ $('run').addEventListener('click', async () => {
   $('run-hint').textContent = 'Compilo il programma e registro i passi.';
   $('error').hidden = true;
   try {
-    const generated = mode === 'flow' ? flowEditor.getSource() : null;
+    const generated = mode === 'flow' ? await flowEditor.getSource() : null;
     const source = generated ? generated.code : code.value;
     if (mode === 'flow') flowEditor.setRunning(true);
     const manual = $('input-mode').value === 'manual';
@@ -564,7 +577,7 @@ async function initialize() {
   $('run').disabled = true;
   try {
     const response = await fetch('/api/config'); if (!response.ok) throw new Error('Configurazione non disponibile.');
-    const config = await response.json(); token = config.token; examples = config.examples;
+    const config = await response.json(); token = config.token; examples = config.examples; configurationDone();
     examples.forEach((example, i) => { const option = element('option', example.title); option.value = String(i); $('examples').append(option); });
     code.value = storage.get('code') ?? ''; input.value = storage.get('input') ?? '';
     const matching = examples.findIndex(example => example.code === code.value);
@@ -576,6 +589,6 @@ async function initialize() {
     if (storage.get('large') === 'true') { document.body.classList.add('large'); $('projection').setAttribute('aria-pressed', 'true'); }
     setMode(storage.get('mode') === 'flow' ? 'flow' : 'cpp', true);
     updateLines(); $('run').disabled = false; $('cpp-to-flow').disabled = false;
-  } catch (error) { $('error').textContent = error.message + ' Verifica che il server locale sia attivo.'; $('error').hidden = false; }
+  } catch (error) { configurationDone(); $('error').textContent = error.message + ' Verifica che il server locale sia attivo.'; $('error').hidden = false; }
 }
 initialize();

@@ -61,8 +61,9 @@ const inferred = C.generate(automatic);
 assert.match(inferred.code,/double base;/);
 assert.match(inferred.code,/int altezza;/);
 assert.match(inferred.code,/string nome;/);
-assert.match(inferred.code,/decltype\(2.5\)/);
-assert.match(inferred.code,/decltype\(string\("Ciao"\)\)/);
+assert.ok(!inferred.code.includes("#include <type_traits>"));
+assert.ok(!inferred.code.includes("#include <iomanip>"));
+assert.ok(!generated.code.includes("return 0;"));
 const scoped = C.blank();
 scoped.functions[0].body = [make('input',{target:'int scelta'}),make('if',{condition:'scelta > 0',
   then:[make('assign',{expression:'numero = 7\nsaluto = "Ciao"'}),make('declare',{name:'lavoro'})],

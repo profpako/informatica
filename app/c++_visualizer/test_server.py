@@ -103,6 +103,19 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.request('POST', '/api/cancel', json.dumps({'session':'session-test'}), headers)[0], 200)
         cancel.assert_called_once_with('session-test')
 
+    @patch('server.resolve_flowchart_source')
+    def test_source_resolution_requires_authentication(self, resolve):
+        body = json.dumps({'code':'int main(){}'})
+        self.assertEqual(self.request('POST', '/api/flowchart-source', body)[0], 403)
+        resolve.assert_not_called()
+        headers = {'Origin': self.origin, 'X-Visualizer-Token': TOKEN, 'Content-Type': 'application/json'}
+        resolve.return_value = 'int main(){}'
+        status, response, _ = self.request('POST', '/api/flowchart-source', body, headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(response)['code'], 'int main(){}')
+        resolve.side_effect = CodeError('Riga 3: tipo non supportato.')
+        self.assertEqual(self.request('POST', '/api/flowchart-source', body, headers)[0], 400)
+
 
 if __name__ == '__main__':
     unittest.main()

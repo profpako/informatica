@@ -3,6 +3,7 @@ import subprocess
 import unittest
 
 from engine import ROOT, run_program
+from flowchart_import import resolve_flowchart_source
 
 
 class FlowchartEngineTests(unittest.TestCase):
@@ -11,6 +12,9 @@ class FlowchartEngineTests(unittest.TestCase):
         fixture = subprocess.run(['node', str(ROOT / 'test_flowchart.cjs'), '--fixture'],
                                  capture_output=True, text=True, timeout=10, check=True)
         cls.fixture = json.loads(fixture.stdout)
+        for generated in cls.fixture.values():
+            if isinstance(generated, dict) and 'code' in generated:
+                generated['code'] = resolve_flowchart_source(generated['code'])
 
     def test_input_function_result_and_block_mapping(self):
         generated = self.fixture['generated']

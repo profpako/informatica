@@ -123,7 +123,7 @@ const FlowchartEditor = (() => {
       this.forTooltip.setAttribute('popover','manual'); this.forTooltip.setAttribute('role','tooltip'); this.root.append(this.forTooltip);
       const preview = el('section', undefined, 'flow-preview'); preview.setAttribute('aria-label', 'C++ generato'); preview.append(el('h3', 'C++ generato'));
       this.source = el('pre'); this.source.tabIndex = 0; this.source.setAttribute('aria-label', 'Sorgente C++ generato dal diagramma'); preview.append(this.source);
-      this.button('Scarica C++ generato', () => { try { ProgramFiles.download(this.getSource().code, ProgramFiles.filename(this.document.title || '', '.cpp'), 'text/plain'); } catch {} }, preview);
+      this.button('Scarica C++ generato', async () => { try { const source = await this.getSource(); ProgramFiles.download(source.code, ProgramFiles.filename(this.document.title || '', '.cpp'), 'text/plain'); } catch {} }, preview);
       this.options.sourceRoot.append(preview);
     }
     chooseKind(kind) {
@@ -210,8 +210,15 @@ const FlowchartEditor = (() => {
       if (!this.document.functions.some(fn => fn.id === this.fnId)) this.fnId = 'main';
       this.options.onChange(JSON.stringify(this.document)); this.render();
     }
-    getSource() {
-      try { return C.generate(this.document); }
+    async getSource() {
+      try {
+        C.generate(this.document);
+        this.preview();
+        const key = this.sourceKey, revision = this.sourceRevision, generated = await this.sourceReady;
+        if (key !== this.sourceKey || revision !== this.sourceRevision) throw new Error('Il diagramma è cambiato: ripeti l’operazione.');
+        if (generated instanceof Error) throw generated;
+        return generated;
+      }
       catch (error) {
         this.message(error.message, true);
         const location = C.locate(this.document, error.node);
@@ -252,13 +259,30 @@ const FlowchartEditor = (() => {
     }
     preview() {
       try {
-        this.generated = C.generate(this.document);
-        this.source.replaceChildren(...this.generated.code.split('\n').map((line, index) => {
-          const row = el('span', line || ' ', 'generated-line'); row.dataset.line = index + 1; return row;
-        }));
-        this.paintSource();
-        this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : 'Clicca su una freccia (+) per inserire un blocco, oppure seleziona un blocco per modificarlo.');
-      } catch (error) { this.generated = null; this.source.textContent = error.message; this.message(error.message, true); }
+        const candidate = C.generate(this.document), key = JSON.stringify(candidate);
+        if (key === this.sourceKey && !this.sourceFailure) {
+          this.paintSource();
+          this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : 'Clicca su una freccia (+) per inserire un blocco, oppure seleziona un blocco per modificarlo.');
+          return;
+        }
+        this.sourceKey = key; this.generated = candidate; this.sourceFailure = false;
+        const revision = this.sourceRevision = (this.sourceRevision || 0) + 1;
+        this.source.textContent = 'Genero il C++…';
+        this.sourceReady = this.options.resolveSource(candidate).then(generated => {
+          if (this.sourceKey === key && this.sourceRevision === revision) {
+            this.generated = generated;
+            this.source.replaceChildren(...generated.code.split('\n').map((line, index) => {
+              const row = el('span', line || ' ', 'generated-line'); row.dataset.line = index + 1; return row;
+            }));
+            this.paintSource(!!this.selected);
+            this.message(this.running ? 'Esecuzione registrata: usa i passi per seguire i blocchi.' : 'Clicca su una freccia (+) per inserire un blocco, oppure seleziona un blocco per modificarlo.');
+          }
+          return generated;
+        }).catch(error => {
+          if (this.sourceKey === key && this.sourceRevision === revision) { this.sourceFailure = true; this.source.textContent = error.message; this.message(error.message, true); }
+          return error;
+        });
+      } catch (error) { this.sourceKey = null; this.generated = null; this.sourceReady = Promise.resolve(error); this.source.textContent = error.message; this.message(error.message, true); }
     }
     paintSource(scroll = false) {
       this.source.querySelectorAll('.generated-line').forEach(row => {

@@ -9,7 +9,7 @@ import tempfile
 from engine import CodeError, Instrumenter, TOKENS, bounds, diagnostic, prepare, walk
 
 
-def import_flowchart(code):
+def parse_cpp(code):
     compiler = shutil.which('clang++')
     if not compiler:
         raise CodeError('La conversione richiede clang++, come il visualizzatore C++.')
@@ -29,9 +29,50 @@ def import_flowchart(code):
             tree = json.loads(result.stdout)
         except json.JSONDecodeError:
             raise CodeError('Il compilatore non ha restituito un programma importabile.') from None
+    return source, prefix_lines, tree
+
+
+def import_flowchart(code):
+    source, prefix_lines, tree = parse_cpp(code)
     instrumenter = Instrumenter(source, prefix_lines, tree)
     instrumenter.validate()
     return Importer(source, prefix_lines, tree).build()
+
+
+def resolve_flowchart_source(code):
+    for _ in range(3):
+        try:
+            source, prefix_lines, tree = parse_cpp(code)
+        except CodeError as error:
+            messages = [line for line in str(error).splitlines() if line.startswith('Riga ')]
+            if messages:
+                raise CodeError('\n'.join(messages)) from None
+            raise
+        instrumenter = Instrumenter(source, prefix_lines, tree)
+        lines, pending, changed = code.split('\n'), False, False
+        for node in walk(tree):
+            if node.get('kind') != 'VarDecl' or not bounds(node):
+                continue
+            prefix = source[bounds(node)[0]:node['loc']['offset']].decode().replace('::__cv_user::', '::')
+            if not prefix.startswith('std::decay_t<decltype('):
+                continue
+            concrete = node['type']['qualType'].replace('std::basic_string<char>', 'string').replace('std::string', 'string')
+            # Clang può conservare l'alias del tipo puntato: risolverlo dopo gli scalari.
+            if 'decltype(' in concrete:
+                pending = True
+                continue
+            index = instrumenter.line(node) - 1
+            if prefix not in lines[index]:
+                raise CodeError('Impossibile determinare il tipo della variabile ' + node['name'] + '.')
+            lines[index] = lines[index].replace(prefix, concrete + ' ', 1)
+            changed = True
+        code = '\n'.join(lines)
+        if not pending:
+            instrumenter.validate()
+            return code
+        if not changed:
+            break
+    raise CodeError('Impossibile dedurre un tipo semplice. Dichiara esplicitamente il tipo della variabile.')
 
 
 class Importer:
