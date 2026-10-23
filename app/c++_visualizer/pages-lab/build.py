@@ -57,6 +57,7 @@ def build():
     (OUT / 'index.html').write_text(html)
     # shortcut: adattamento della UI stabile; introdurre request condivisa prima dell'integrazione su main.
     app = (APP / 'app.js').read_text().replace('fetch(', 'browserRequest(')
+    app = app.replace("'cppviz-'", "'cppviz-pages-lab-'")
     app = app.replace('Avvia il server locale e ricarica per generare il C++.', 'Ricarica la pagina per riavviare il motore WASM.')
     app = app.replace('Verifica che il server locale sia attivo.', 'Controlla la connessione e ricarica la pagina.')
     app = app.replace('Server locale non raggiungibile. Avvia avvia.command e tieni aperto il terminale, poi ricarica la pagina e riprova. Codice e input sono conservati.', 'Motore WASM non disponibile. Ricarica e riprova; codice e input sono conservati.')

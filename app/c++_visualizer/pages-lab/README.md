@@ -11,6 +11,8 @@ Un Worker esegue Clang/LLD, il runtime WASI e Pyodide. L'analisi, la
 strumentazione, i ruoli automatici e le conversioni riusano engine.py,
 roles.py e flowchart_import.py; non viene introdotto un parser C++ alternativo.
 L'interfaccia è prodotta dai file della versione locale.
+Lo storage della prova usa un prefisso distinto, per non modificare eventuali
+programmi salvati da altre versioni sullo stesso dominio GitHub Pages.
 
 Gli endpoint /api della UI sono gestiti da un adattatore interno al browser:
 non avvengono chiamate a un server Python né invii del codice a un compilatore
