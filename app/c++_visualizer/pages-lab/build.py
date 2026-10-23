@@ -49,7 +49,7 @@ def build():
     shared = ['app.js', 'style.css', 'flowchart.css', 'flowchart-core.js', 'flowchart-editor.js',
               'program-files.js', 'examples.json', 'engine.py', 'roles.py', 'flowchart_import.py', 'runtime.hpp']
     sources = [APP / name for name in ['index.html', *shared]] + [ROOT / name for name in
-              ['browser-backend.js', 'browser-worker.js', 'browser_bridge.py', 'packages.lock.json']]
+              ['browser-backend.js', 'browser-worker.js', 'browser_bridge.py', 'packages.lock.json', 'build.py']]
     revision = hashlib.sha256(b''.join(path.read_bytes() for path in sources)).hexdigest()[:16]
     assets = OUT / 'assets' / revision
     assets.mkdir(parents=True)

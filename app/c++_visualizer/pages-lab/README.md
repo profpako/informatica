@@ -90,3 +90,9 @@ prima di creare e distribuire l’artefatto Pages; un fallimento blocca la pubbl
 Gli aggiornamenti richiedono un push su main: una modifica non pubblicata sul PC
 non cambia il sito. Le parti comuni sono uniche; gli adattatori di esecuzione
 sono distinti per le capacità differenti di macOS e del browser.
+
+Verifica su Pages del 23 ottobre 2026: pipeline build/deploy verde; input manuali
+4 e 6 con eco su righe separate, funzione area 24, procedura perimetro 20 e
+archivio delle due chiamate. Vecchio URL verificato con rinvio automatico al
+nuovo percorso; i dati del browser sono stati conservati. Prova visiva:
+[verifica-condivisa.png](verifica-condivisa.png).

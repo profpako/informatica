@@ -968,10 +968,10 @@ Verifiche concluse:
 - [x] Ampliare le prove online: input, funzioni, array, puntatori, condizioni, errori, limiti e conversioni.
   - [x] Verificare i tre standard e i controlli UB/bounds disponibili in WASM.
   - [x] Eseguire la suite locale completa e test automatici del motore WASM.
-- [ ] Pubblicare dalla pipeline Pages del repository informatica solo dopo i test.
-  - [ ] Mantenere il vecchio link con un rinvio alla versione condivisa.
+- [x] Pubblicare dalla pipeline Pages del repository informatica solo dopo i test.
+  - [x] Mantenere il vecchio link con un rinvio alla versione condivisa.
   - [x] Nessun token fra repository né servizi a pagamento.
-- [ ] Verificare browser locale/online, documentare risultati e pubblicare.
+- [x] Verificare browser locale/online, documentare risultati e pubblicare.
 
 Preferenza confermata: aggiornamento online automatico dopo i test su main.
 Sorgente unico in app/c++_visualizer; la build statica viene inclusa nel sito
@@ -987,4 +987,18 @@ annullamenti scaduti che potevano cancellare la sessione successiva.
 Browser locale: C++23 con puntatori/array produce 11 e 8; cambio a C++20
 invalida la traccia e viene ricordato al ricaricamento. Server abituale
 riavviato dopo aver verificato assenza di input pendenti, PID 46669.
-La pipeline e il rinvio del vecchio link devono ancora essere verificati online.
+Pipeline reale superata su GitHub Actions (run 40027459916): build e deploy verdi.
+Manifesto pubblico verificato: sorgente c2d1b14; sito delle lezioni ancora HTTP 200.
+Vecchio repository ridotto a un rinvio con cronologia recuperabile (b46cc76);
+run 40027988351 verde e navigazione dal vecchio al nuovo URL verificata.
+Browser statico condiviso: C++20, flowchart area con input 4 e 6, console corretta
+su righe separate e risultato 24; tipi int e C++ generato essenziale confermati.
+
+Browser su Pages: programma già presente conservato senza modifiche; due input
+manuali 4 e 6 con eco e INVIO, funzione area = 24 e procedura perimetro = 20;
+47 passi e archivio delle due chiamate concluse. Schermata pubblica salvata e
+ispezionata: pages-lab/verifica-condivisa.png. I programmi della vecchia prova
+sono stati ritrovati sul nuovo percorso grazie al prefisso storage invariato.
+Controllo finale della cache: incluso lo script di build nel fingerprint.
+Non provati PC scolastici o browser diversi da Chrome; input manuale WASM
+ancora basato su replay deterministico, come documentato nel README Pages.
