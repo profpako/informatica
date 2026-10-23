@@ -35,6 +35,8 @@ jobs:
         run: |
           node test_flowchart.cjs
           node test_program_files.cjs
+          node --check app.js
+          node --check flowchart-editor.js
       - name: Identifica la toolchain verificata
         id: toolchain
         run: |
@@ -50,7 +52,7 @@ jobs:
         continue-on-error: true
         with:
           path: .compiler-tests
-          key: cpp-tests-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.version }}-${{ hashFiles('app/c++_visualizer/**/*.py', 'app/c++_visualizer/**/*.js', 'app/c++_visualizer/**/*.mjs', 'app/c++_visualizer/**/*.cjs', 'app/c++_visualizer/**/*.hpp', 'app/c++_visualizer/**/*.json', 'app/c++_visualizer/**/*.html', 'app/c++_visualizer/**/*.css', '.github/workflows/pages.yml') }}
+          key: cpp-tests-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.version }}-${{ hashFiles('app/c++_visualizer/**/*.py', 'app/c++_visualizer/**/*.js', 'app/c++_visualizer/**/*.mjs', 'app/c++_visualizer/**/*.cjs', 'app/c++_visualizer/**/*.hpp', 'app/c++_visualizer/**/*.json', '.github/workflows/pages.yml') }}
           lookup-only: true
       - name: Costruisci sempre il laboratorio online
         working-directory: app/c++_visualizer
