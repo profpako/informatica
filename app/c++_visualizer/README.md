@@ -35,13 +35,20 @@ C++, senza trattare le graffe in stringhe e commenti come blocchi del programma.
 Tab/Shift+Tab regolano il rientro anche delle selezioni; le tabulazioni già presenti
 cambiano larghezza visiva senza riscrivere il file.
 
-Dopo due caratteri compaiono **suggerimenti** per nomi già presenti nel file,
-tipi semplici, parole chiave C++ e nomi comuni delle librerie supportate.
+Dopo due caratteri, oppure dopo `.`, `->` e `::`, compaiono **suggerimenti
+contestuali** forniti da Clang: variabili e parametri visibili nell'ambito corrente,
+tipi, funzioni e membri di struct, anche attraverso puntatori e celle di matrici.
+Il menu mostra il tipo o la firma; accettare un suggerimento inserisce il nome.
 Ctrl+Spazio apre il menu manualmente, le frecce scelgono, Invio o Tab accettano,
-Esc chiude. Commenti e stringhe non alimentano i suggerimenti.
-È un completamento lessicale del documento: può proporre nomi di altri ambiti;
-non risolve overload, tipi dei membri o validità semantica. Il compilatore resta
-responsabile di queste verifiche durante l'esecuzione.
+Esc chiude. Stringhe, commenti e direttive non aprono il menu.
+I suggerimenti rispettano lo standard C++ selezionato. Le richieste partono dopo
+una breve pausa; digitare nello stesso identificatore filtra i risultati già
+ottenuti. Le risposte riferite a codice, cursore o standard modificati vengono
+ignorate. Se il servizio non è disponibile rimangono i suggerimenti testuali
+del documento, che possono includere nomi di altri ambiti.
+Nel browser il primo suggerimento può richiedere il caricamento del compilatore;
+il codice resta nel Worker locale. Il menu riunisce gli overload con lo stesso
+nome e mostra una firma, senza inserire automaticamente gli argomenti.
 
 Ctrl/Cmd+/ commenta o decommenta le righe, Ctrl/Cmd+F cerca; Ctrl+H oppure
 Cmd+Alt+F su Mac apre la sostituzione. Senza menu aperti, Esc seguito da Tab
@@ -50,6 +57,19 @@ salvataggio e traccia; esempi e file caricati rimangono sincronizzati con la vis
 di esecuzione. Le funzioni sono condivise fra locale e browser/WASM e non
 richiedono connessioni a CDN o servizi di completamento.
 Versione, integrità e licenza dell'editor sono in [vendor/codemirror/README.md](vendor/codemirror/README.md).
+
+Dopo **Visualizza esecuzione** o **C++ → Flowchart**, gli errori di compilazione
+e i controlli del visualizzatore che indicano una riga vengono mostrati anche
+nell'editor C++: indicatore nel margine, sfondo della riga, sottolineatura e
+messaggio accanto al codice. Più errori sulla stessa riga sono raggruppati;
+gli errori alla fine del sorgente sono collegati all'ultima riga.
+Le colonne tengono conto dei byte UTF-8 usati da Clang, anche con accenti o emoji
+prima dell'errore. Locale e WASM riferiscono le righe al sorgente originale,
+senza contare il codice preparatorio del motore.
+Modificare il codice o avviare una nuova verifica elimina le segnalazioni vecchie.
+Il riquadro generale resta disponibile per la diagnosi completa e per gli errori
+senza una posizione riconoscibile. Queste segnalazioni si aggiornano solo dopo
+l'avvio dell'esecuzione o della conversione.
 
 Dopo un push su **main**, la pipeline verifica sempre sito, tema ed editor e
 ricostruisce il laboratorio. I test del compilatore e del motore WASM vengono
@@ -488,7 +508,7 @@ didattico del docente, non un servizio pubblico per eseguire sorgenti anonimi.
 ## Verifiche
 
 ```sh
-python3 -m unittest test_engine test_server test_roles test_flowchart_engine test_flowchart_import test_interactive test_flowchart_source -v
+python3 -m unittest test_engine test_server test_completion test_roles test_flowchart_engine test_flowchart_import test_interactive test_flowchart_source -v
 node test_flowchart.cjs
 node test_program_files.cjs
 node --check app.js

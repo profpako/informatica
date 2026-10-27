@@ -1,12 +1,13 @@
 """Server locale del visualizzatore. Avvio: python3 server.py"""
 import argparse
+import errno
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 from pathlib import Path
 import secrets
 from urllib.parse import urlsplit
 
-from engine import CodeError, run_program, STANDARDS, standard_flag
+from engine import CodeError, run_program, complete_cpp, STANDARDS, standard_flag
 from flowchart_import import import_flowchart, resolve_flowchart_source
 import interactive
 
@@ -53,7 +54,7 @@ class Handler(BaseHTTPRequestHandler):
         origins = {f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}'}
         if not self.valid_host() or self.headers.get('Origin') not in origins or not secrets.compare_digest(self.headers.get('X-Visualizer-Token', ''), TOKEN):
             return self.send(403, {'error': 'Richiesta non autorizzata. Ricarica la pagina locale.'})
-        if self.path not in {'/api/run','/api/import-flowchart','/api/flowchart-source','/api/input','/api/cancel'}:
+        if self.path not in {'/api/run','/api/import-flowchart','/api/flowchart-source','/api/complete','/api/input','/api/cancel'}:
             return self.send(404, {'error': 'Risorsa non trovata.'})
         try:
             length = int(self.headers.get('Content-Length', '0'))
@@ -64,7 +65,9 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError('Richiesta non valida.')
             standard = data.get('standard', '17')
             standard_flag(standard)
-            if self.path == '/api/import-flowchart':
+            if self.path == '/api/complete':
+                result = complete_cpp(data.get('code'), data.get('line'), data.get('column'), standard=standard)
+            elif self.path == '/api/import-flowchart':
                 result = {'document':import_flowchart(data.get('code'), standard=standard)}
             elif self.path == '/api/flowchart-source':
                 result = {'code':resolve_flowchart_source(data.get('code'), standard=standard)}
@@ -92,6 +95,11 @@ def main():
     try:
         server = HTTPServer(('127.0.0.1', args.port), Handler)
     except OSError as error:
+        if error.errno == errno.EADDRINUSE:
+            parser.exit(1, f'La porta {args.port} è già in uso. Il server precedente potrebbe essere ancora aperto.\n'
+                        f'Indirizzo del visualizzatore: http://127.0.0.1:{args.port}\n'
+                        'Per riavviarlo, premi Ctrl+C nel terminale del server precedente, poi riapri avvia.command.\n'
+                        'Chiudere la scheda del browser non ferma il server.\n')
         parser.exit(1, f'Impossibile avviare il server: {error}\n')
     print(f'Visualizzatore C++: http://127.0.0.1:{server.server_port}', flush=True)
     print('Premi Ctrl+C per terminare. Il codice rimane su questo computer.', flush=True)

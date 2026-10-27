@@ -20,13 +20,21 @@ async function ready(){
   })();
   return loading;
 }
-async function ast(source,standard){
+async function analyze(source,standard,flags){
   phase('Analisi del codice con Clang '+standard+'…');
   let output='',errors='';
   const clang=await tool.Clang({thisProgram:'clang++',print:s=>{output+=s+'\n';},printErr:s=>{errors+=s+'\n';}});
   tool.setUpSysroot(clang,sysroot,{'lezione.cpp':source});
-  const result=clang.callMain(['-std=c++'+standard,'-Wno-return-type','-pedantic-errors','-fno-color-diagnostics','-Xclang','-ast-dump=json','-Xclang','-ast-dump-filter=__cv_user','-fsyntax-only','lezione.cpp']);
-  if(result!==0)throw new Error(errors||'Analisi C++ non riuscita.');
+  const result=clang.callMain(['-std=c++'+standard,'-Wno-return-type','-pedantic-errors','-fno-color-diagnostics',...flags,'-fsyntax-only','lezione.cpp']);
+  return {result,output,errors};
+}
+async function ast(source,standard,prefix){
+  const {result,output,errors}=await analyze(source,standard,['-Xclang','-ast-dump=json','-Xclang','-ast-dump-filter=__cv_user']);
+  if(result!==0){
+    python.globals.set('_clang_errors',errors||'Analisi C++ non riuscita.');
+    python.globals.set('_clang_prefix',prefix);
+    throw new Error(python.runPython('from engine import diagnostic\ndiagnostic(_clang_errors, "lezione.cpp", _clang_prefix)'));
+  }
   return output;
 }
 async function callPython(operation,data,standard='17'){
@@ -34,7 +42,7 @@ async function callPython(operation,data,standard='17'){
     python.globals.set('_operation',operation);python.globals.set('_payload',JSON.stringify(data));
     const result=JSON.parse(python.runPython('browser_call(_operation, _payload)'));
     if(!Object.hasOwn(result,'parse'))return result;
-    const tree=await ast(result.source,standard);
+    const tree=await ast(result.source,standard,result.prefix);
     python.globals.set('_cached_standard',standard);python.globals.set('_cached_code',result.parse);python.globals.set('_cached_ast',tree);
     python.runPython('import json\n_asts[(_cached_standard, _cached_code)] = json.loads(_cached_ast)');
   }
@@ -64,6 +72,14 @@ async function dispatch(path,data){
   await ready();
   const standard=data.standard??'17';
   if(!['17','20','23'].includes(standard))throw new Error('Standard non valido. Scegli C++17, C++20 o C++23.');
+  if(path==='/api/complete'){
+    python.globals.set('_completion_data',JSON.stringify(data));
+    const prepared=JSON.parse(python.runPython('import json\nfrom engine import completion_source, completion_items\nd = json.loads(_completion_data)\njson.dumps(completion_source(d.get("code"), d.get("line"), d.get("column")))'));
+    const {output}=await analyze(prepared.source,standard,['-Xclang',`-code-completion-at=lezione.cpp:${prepared.line}:${prepared.column}`]);
+    python.globals.set('_completion_output',output);
+    phase('Suggerimenti pronti.');
+    return {items:JSON.parse(python.runPython('json.dumps(completion_items(_completion_output))'))};
+  }
   if(['/api/run','/api/import-flowchart','/api/flowchart-source'].includes(path))python.runPython('_asts.clear()');
   if(path==='/api/import-flowchart'){const result=await callPython('import',data,standard);phase('Conversione in flowchart completata nel browser.');return result;}
   if(path==='/api/flowchart-source'){const result=await callPython('source',data,standard);phase('C++ generato nel browser.');return result;}

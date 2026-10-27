@@ -11,6 +11,10 @@ Un Worker esegue Clang/LLD, il runtime WASI e Pyodide. L'analisi, la
 strumentazione, i ruoli automatici e le conversioni riusano engine.py,
 roles.py e flowchart_import.py; non viene introdotto un parser C++ alternativo.
 L'interfaccia usa direttamente i file condivisi: app.js non viene riscritto.
+Anche i suggerimenti contestuali dell'editor usano Clang nel Worker, con gli
+stessi preparazione del sorgente e formato dei risultati del motore locale.
+La richiesta di suggerimenti non esegue il programma e conserva le sessioni
+di input manuale eventualmente aperte.
 Lo storage della prova usa un prefisso distinto, per non modificare eventuali
 programmi salvati da altre versioni sullo stesso dominio GitHub Pages.
 
@@ -26,6 +30,7 @@ Dalla cartella app/c++_visualizer su main:
 ```sh
 python3 pages-lab/build.py
 python3 pages-lab/test_bridge.py
+python3 -m unittest test_completion test_server -v
 node test_flowchart.cjs
 node test_program_files.cjs
 node pages-lab/test_wasm.mjs
@@ -81,9 +86,10 @@ giornaliere. Il sito non ha una scadenza di un giorno.
 ## Verifiche condivise e aggiornamenti
 
 84 test nativi superati su macOS, inclusi i tre standard e le sessioni manuali.
-La suite WASM verifica 38 casi: esempi, standard effettivo, parametri, array,
+La suite WASM verifica 60 casi: esempi, standard effettivo, parametri, array,
 condizioni, ricorsione, ruoli, UTF-8, input/correzioni/annullamenti, errori e limiti,
-conversioni bidirezionali e tipi generati. Tre test del bridge confrontano anche
+conversioni bidirezionali, tipi generati, errori nell'editor e suggerimenti
+contestuali per ambiti, struct, matrici e puntatori. Quattro test del bridge confrontano anche
 la strumentazione con il motore locale. La pipeline esegue sempre i controlli
 rapidi Node, sito e tema, e ricostruisce la distribuzione da sorgente.
 I gate bridge/WASM riusano soltanto un esito positivo per la stessa impronta di

@@ -41,6 +41,28 @@ try{
     const result=await run(program('int b,h;cout<<"Base: ";cin>>b;cout<<"Altezza: ";cin>>h;cout<<b*h;'),'4 6');
     assert.equal(result.error,'');assert.equal(last(result).console,'Base: 4\nAltezza: 6\n24');
   });
+  await test('Diagnostica sulle righe originali per l’editor',async()=>{
+    await assert.rejects(run('int main(){\n  int x = ;\n}'),{message:/^Riga 2:11: error:/m});
+  });
+  await test('Suggerimenti: ambito, tipi, struct, matrici e puntatori',async()=>{
+    async function complete(marked,standard='17'){
+      const [before,after]=marked.split('|');
+      const result=await call('/api/complete',{code:before+after,line:before.split('\n').length,
+        column:Buffer.byteLength(before.split('\n').at(-1))+1,standard});
+      return new Map(result.items.map(item=>[item.text,item.displayText]));
+    }
+    const names=await complete('struct Punto{int x;};int globale;\nvoid altra(){int nascosta;}\nint main(int parametro){int visibile;{int scaduta;} | int futura;}');
+    for(const name of ['Punto','globale','parametro','visibile','int','return'])assert.ok(names.has(name),name);
+    for(const name of ['nascosta','scaduta','futura'])assert.equal(names.has(name),false,name);
+    assert.equal(names.get('visibile'),'int visibile');
+    for(const expression of ['punti[1][2].','p->']){
+      const members=await complete('struct P{int ascissa;double ordinata;};int main(){P punti[2][3];P *p;int estranea;'+expression+'|}');
+      assert.ok(members.has('ascissa'));assert.ok(members.has('ordinata'));assert.equal(members.has('estranea'),false);
+    }
+    assert.ok((await complete('int totale;int main(){const char*s="Età 😀";::|}')).has('totale'));
+    for(const standard of ['17','20','23'])assert.equal((await complete('int main(){|}',standard)).has('char8_t'),standard!=='17');
+    await assert.rejects(call('/api/complete',{code:'int x;',line:true,column:1}));
+  });
   await test('Flowchart: cout leggibile e precedenza degli operatori',async()=>{
     const doc=C.blank(), number=Object.assign(C.newNode('declare'),{name:'n',init:'4'}),
       output=Object.assign(C.newNode('output'),{expression:'"Risultato"\n" "\nn\n" "\nn == 4\n" "\nn << 1\n" "\nn > 0 ? 9 : 0'});
@@ -121,6 +143,10 @@ try{
   await test('Input manuali, correzione, prefisso traccia e richieste scadute',async()=>{
     let result=await run(program('int b,h;cin>>b>>h;cout<<b*h;'),'', '20',{manual:true});
     const id=result.session, prefix=result.steps;
+    const completionCode='int _locale;int main(){ }';
+    const hints=await call('/api/complete',{code:completionCode,line:1,column:completionCode.indexOf('}')+1,standard:'23'});
+    assert.ok(hints.items.some(item=>item.text==='_locale'));
+    await assert.rejects(call('/api/complete',{code:completionCode,line:0,column:1}));
     await assert.rejects(call('/api/input',{session:id,request:99,value:'4'}),/scaduta/);
     result=await call('/api/input',{session:id,request:last(result).inputRequest.number,value:'abc'});
     assert.equal(last(result).inputRequest.target,'b');assert.match(last(result).inputRequest.error,/non valido/);

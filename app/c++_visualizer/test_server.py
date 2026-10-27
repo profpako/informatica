@@ -1,12 +1,14 @@
 from http.client import HTTPConnection
 from http.server import HTTPServer
+from contextlib import redirect_stderr
+from io import StringIO
 import json
 import threading
 import unittest
 from unittest.mock import patch
 
 from engine import CodeError
-from server import Handler, TOKEN
+from server import Handler, TOKEN, main
 
 
 class ServerTests(unittest.TestCase):
@@ -30,6 +32,16 @@ class ServerTests(unittest.TestCase):
         status, body, returned_headers = response.status, response.read(), dict(response.getheaders())
         client.close()
         return status, body, returned_headers
+
+    def test_duplicate_start_explains_how_to_restart(self):
+        output = StringIO()
+        with patch('sys.argv', ['server.py', '--port', str(self.server.server_port)]), redirect_stderr(output):
+            with self.assertRaises(SystemExit) as exit:
+                main()
+        self.assertEqual(exit.exception.code, 1)
+        self.assertIn(self.origin, output.getvalue())
+        self.assertIn('Ctrl+C', output.getvalue())
+        self.assertIn('scheda del browser non ferma il server', output.getvalue())
 
     def test_static_config_and_source_not_exposed(self):
         status, body, headers = self.request('GET', '/')
@@ -128,6 +140,20 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(json.loads(response)['code'], 'int main(){}')
         resolve.side_effect = CodeError('Riga 3: tipo non supportato.')
         self.assertEqual(self.request('POST', '/api/flowchart-source', body, headers)[0], 400)
+
+    @patch('server.complete_cpp')
+    def test_completion_authentication_and_validation(self, complete):
+        body = json.dumps({'code':'int main(){to}', 'line':1, 'column':12, 'standard':'23'})
+        self.assertEqual(self.request('POST', '/api/complete', body)[0], 403)
+        complete.assert_not_called()
+        headers = {'Origin':self.origin, 'X-Visualizer-Token':TOKEN, 'Content-Type':'application/json'}
+        complete.return_value = {'items':[{'text':'totale', 'displayText':'int totale'}]}
+        status, response, _ = self.request('POST', '/api/complete', body, headers)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(response), complete.return_value)
+        complete.assert_called_once_with('int main(){to}', 1, 12, standard='23')
+        complete.side_effect = CodeError('Posizione dei suggerimenti non valida.')
+        self.assertEqual(self.request('POST', '/api/complete', body, headers)[0], 400)
 
 
 if __name__ == '__main__':

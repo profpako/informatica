@@ -91,6 +91,7 @@ function controls() {
   $('timeline-number').style.left = `clamp(22px, calc(${fraction * 100}% + ${8 - 16 * fraction}px), calc(100% - 22px))`;
 }
 function invalidate() {
+  codeEditor.clearDiagnostics();
   cancelManual();
   version++;
   pause();
@@ -478,7 +479,15 @@ $('manual-input-form').addEventListener('submit', async event => {
 code.addEventListener('input', () => { $('examples').value = ''; invalidate(); }); input.addEventListener('input', invalidate);
 code.addEventListener('scroll', () => { $('gutter').scrollTop = code.scrollTop; });
 $('code-view').addEventListener('scroll', () => { $('gutter').scrollTop = $('code-view').scrollTop; });
-const codeEditor = setupCodeEditor(code, $('tab-size'), storage);
+const codeEditor = setupCodeEditor(code, $('tab-size'), storage, {
+  standard:() => $('cpp-standard').value,
+  async complete(data) {
+    const response = await requestAPI('/api/complete', {method:'POST',headers:{'Content-Type':'application/json','X-Visualizer-Token':token},body:JSON.stringify(data)});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Suggerimenti non disponibili.');
+    return result;
+  }
+});
 $('edit').addEventListener('click', () => { invalidate(); codeEditor.focus(); });
 $('new').addEventListener('click', () => {
   $('examples').value = ''; code.value = ''; input.value = ''; programName.value = ''; storage.set('program-name', ''); invalidate(); codeEditor.focus();
@@ -488,6 +497,7 @@ $('examples').addEventListener('change', () => {
   code.value = example?.code ?? ''; input.value = example?.input ?? ''; programName.value = example?.title ?? ''; storage.set('program-name', programName.value); invalidate(); codeEditor.focus();
 });
 $('run').addEventListener('click', async () => {
+  codeEditor.clearDiagnostics();
   cancelManual();
   pause(); const requestVersion = version;
   retainedMemory = null; retainedCalls = null; selectedVariable = null; lastRenderedStep = null; steps = []; position = 0; controls();
@@ -529,12 +539,14 @@ $('run').addEventListener('click', async () => {
     $('stack').replaceChildren(element('li', 'Nessuna chiamata attiva.', 'placeholder'));
     $('output').textContent = '';
     $('error').textContent = error.message; $('error').hidden = false;
+    if (mode === 'cpp') codeEditor.showDiagnostics(error.message);
     setRunHint('Controlla il messaggio di errore.');
   } finally { if (!steps.length) flowEditor.setRunning(false); $('run').disabled = !token; $('run').textContent = '▶ Visualizza esecuzione'; }
 });
 $('mode-cpp').addEventListener('click', () => setMode('cpp'));
 $('mode-flow').addEventListener('click', () => setMode('flow'));
 $('cpp-to-flow').addEventListener('click', async () => {
+  codeEditor.clearDiagnostics();
   const requestVersion=version, source=code.value, sourceInput=input.value;
   $('cpp-to-flow').disabled=true; $('cpp-to-flow').textContent='Conversione…'; $('error').hidden=true;
   try {
@@ -547,7 +559,7 @@ $('cpp-to-flow').addEventListener('click', async () => {
     FlowchartCore.generate(document);
     storage.set('flow-input',sourceInput);setMode('flow');flowEditor.replace(document);
     flowEditor.message('C++ importato: il sorgente originale è conservato. Annulla ripristina il diagramma precedente.');
-  } catch(error) {if(requestVersion===version){$('error').textContent=error.message;$('error').hidden=false;}}
+  } catch(error) {if(requestVersion===version){$('error').textContent=error.message;$('error').hidden=false;codeEditor.showDiagnostics(error.message);}}
   finally {$('cpp-to-flow').disabled=!token;$('cpp-to-flow').textContent='C++ → Flowchart';}
 });
 $('first').addEventListener('click', () => seek(0)); $('last').addEventListener('click', () => seek(steps.length - 1));

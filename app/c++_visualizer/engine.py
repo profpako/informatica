@@ -71,6 +71,64 @@ def prepare(code):
     return (prefix + source + '\n}\n').encode(), prefix.count("\n")
 
 
+def completion_source(code, line, column):
+    if not isinstance(code, str) or type(line) is not int or type(column) is not int:
+        raise CodeError('Posizione dei suggerimenti non valida.')
+    lines = code.split('\n')
+    if not 1 <= line <= len(lines) or not 1 <= column <= len(lines[line - 1].encode()) + 1:
+        raise CodeError('Posizione dei suggerimenti non valida.')
+    try:
+        before = lines[line - 1].encode()[:column - 1].decode()
+    except UnicodeDecodeError:
+        raise CodeError('Posizione dei suggerimenti non valida.') from None
+    offset = sum(len(part) + 1 for part in lines[:line - 1]) + len(before)
+    marker = 'cppvizCompletionCursor'
+    while marker in code:
+        marker += '_'
+    # La sentinella conserva la posizione anche dopo la riscrittura degli accessi ::.
+    source, _ = prepare(code[:offset] + marker + code[offset:])
+    at = source.index(marker.encode())
+    source = source[:at] + source[at + len(marker):]
+    return {'source': source.decode(), 'line': source[:at].count(b'\n') + 1,
+            'column': at - source.rfind(b'\n', 0, at)}
+
+
+def completion_items(output):
+    items = {}
+    for match in re.finditer(r'^COMPLETION: ([A-Za-z_]\w*)(?: : (.*))?$', output, re.M):
+        name, detail = match[1], match[2] or match[1]
+        if name == 'Pattern':
+            token = re.match(r'[A-Za-z_]\w*', re.sub(r'\[#.*?#\]', '', detail))
+            if not token:
+                continue
+            name = token[0]
+        if name == 'cv' or name.startswith('__'):
+            continue
+        detail = re.sub(r'\[#(.*?)#\]', r'\1 ', detail)
+        detail = re.sub(r'[<{]#|#[>}]', '', detail)
+        items.setdefault(name, {'text': name, 'displayText': detail[:250]})
+    return list(items.values())
+
+
+def complete_cpp(code, line, column, standard='17'):
+    language_flag = standard_flag(standard)
+    prepared = completion_source(code, line, column)
+    compiler = shutil.which('clang++')
+    if not compiler:
+        raise CodeError('I suggerimenti contestuali richiedono clang++.')
+    with tempfile.TemporaryDirectory(prefix='cppviz-complete-', dir='/private/tmp' if Path('/private/tmp').is_dir() else None) as folder:
+        path = Path(folder) / 'lezione.cpp'
+        path.write_text(prepared['source'])
+        try:
+            result = subprocess.run([compiler, language_flag, '-fsyntax-only', '-Wno-return-type', '-Xclang',
+                                     f'-code-completion-at={path}:{prepared["line"]}:{prepared["column"]}', str(path)],
+                                    capture_output=True, text=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            raise CodeError('Tempo massimo superato durante i suggerimenti.') from None
+    # Clang può fornire risultati utili anche se il codice ancora incompleto contiene errori.
+    return {'items': completion_items(result.stdout)}
+
+
 class Instrumenter:
     def __init__(self, source, prefix_lines, tree, deferred=None):
         self.source = source
