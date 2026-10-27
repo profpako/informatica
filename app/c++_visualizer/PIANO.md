@@ -19,6 +19,10 @@ sono facoltativi: il funzionamento non deve dipendere da programmi predefiniti.
 
 ## Stato di avanzamento
 
+- Vincolo confermato dal docente il 2026-10-27: non implementare matrici e struct
+  nell'editor Flowchart o nelle relative conversioni senza una nuova richiesta
+  esplicita del docente. Questa estensione è esclusa dalle attività pianificate,
+  sia in locale sia nel browser; il supporto già disponibile in modalità C++ resta previsto.
 - Fase corrente: prima versione locale completata; verifiche automatiche e prova nel browser concluse.
 - La cartella iniziale era vuota: nessun codice preesistente da mantenere o integrare.
 - Scelta: applicazione locale, server Python standard, interfaccia HTML/JS, Clang C++17 con strumentazione AST.

@@ -24,6 +24,9 @@ e `app.js`: l'estensione appartiene a questi file, senza un secondo motore.
 I quattro interventi sono implementati. Le definizioni delle struct devono
 essere esterne alle funzioni; i tipi dei campi annidati si definiscono prima.
 L'editor e la conversione Flowchart mantengono il proprio sottoinsieme.
+Per decisione esplicita del docente del 2026-10-27, l'estensione di matrici e
+struct ai Flowchart è esclusa dal piano, sia in locale sia nel browser.
+Potrà essere avviata soltanto dopo una nuova richiesta esplicita del docente.
 
 ## Criteri di accettazione
 
