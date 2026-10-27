@@ -35,6 +35,8 @@ jobs:
         run: |
           node test_flowchart.cjs
           node test_program_files.cjs
+          node test_workspace_layout.mjs
+          node test_code_editor.mjs
           node --check app.js
           node --check flowchart-editor.js
       - name: Identifica la toolchain verificata

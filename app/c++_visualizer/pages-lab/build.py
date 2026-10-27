@@ -47,7 +47,9 @@ def build():
     OUT.mkdir(exist_ok=True)
     dependencies()
     shared = ['app.js', 'style.css', 'flowchart.css', 'flowchart-core.js', 'flowchart-editor.js',
-              'program-files.js', 'examples.json', 'engine.py', 'roles.py', 'flowchart_import.py', 'runtime.hpp']
+              'program-files.js', 'workspace-layout.js', 'code-editor.js', 'vendor/codemirror/codemirror.js',
+              'vendor/codemirror/codemirror.css', 'vendor/codemirror/LICENSE',
+              'examples.json', 'engine.py', 'roles.py', 'flowchart_import.py', 'runtime.hpp']
     sources = [APP / name for name in ['index.html', *shared]] + [ROOT / name for name in
               ['browser-backend.js', 'browser-worker.js', 'browser_bridge.py', 'packages.lock.json', 'build.py']]
     revision = hashlib.sha256(b''.join(path.read_bytes() for path in sources)).hexdigest()[:16]
@@ -56,6 +58,7 @@ def build():
     for name in ['LLVM-LICENSE.txt', 'PYODIDE-LICENSE.txt', 'PYTHON-LICENSE.txt', 'THIRD_PARTY.md']:
         shutil.copyfile(ROOT / name, OUT / name)
     for name in shared:
+        (assets / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(APP / name, assets / name)
     shutil.copyfile(ROOT / 'browser_bridge.py', assets / 'browser_bridge.py')
     html = (APP / 'index.html').read_text()

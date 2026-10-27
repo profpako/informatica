@@ -41,7 +41,8 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(json.loads(body)['examples']), 8)
         self.assertEqual(json.loads(body)['standards'], ['17', '20', '23'])
-        for path in ['/flowchart-core.js', '/flowchart-editor.js', '/flowchart.css', '/program-files.js', '/transport.js']:
+        for path in ['/flowchart-core.js', '/flowchart-editor.js', '/flowchart.css', '/program-files.js', '/transport.js', '/workspace-layout.js', '/code-editor.js',
+                     '/vendor/codemirror/codemirror.js', '/vendor/codemirror/codemirror.css', '/vendor/codemirror/LICENSE']:
             self.assertEqual(self.request('GET', path)[0], 200)
         for path in ['/engine.py', '/runtime.hpp', '/../README.md']:
             self.assertEqual(self.request('GET', path)[0], 404)

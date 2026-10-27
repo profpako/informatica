@@ -34,7 +34,7 @@ async function test(name,action){await action();passed++;console.log('OK',name);
 try{
   await test('Interfaccia e motore condivisi senza riscritture',async()=>{
     const build=JSON.parse(await readFile(new URL('./dist/build-info.json',import.meta.url)));
-    for(const name of ['app.js','flowchart-core.js','flowchart-editor.js','engine.py','roles.py','runtime.hpp'])
+    for(const name of ['app.js','workspace-layout.js','code-editor.js','vendor/codemirror/codemirror.js','vendor/codemirror/codemirror.css','flowchart-core.js','flowchart-editor.js','engine.py','roles.py','runtime.hpp'])
       assert.deepEqual(await readFile(new URL('../'+name,import.meta.url)),await readFile(new URL('./dist/'+build.assets+name,import.meta.url)));
   });
   await test('C++17: input e area',async()=>{

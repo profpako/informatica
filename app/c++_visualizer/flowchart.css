@@ -29,3 +29,4 @@ body.flow-mode .execution-settings{display:grid;grid-template-columns:minmax(0,1
 .flow-node.flow-traversed .flow-join-line{stroke:#245bb2;stroke-width:4}
 
 .flow-block-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}.flow-block-actions>button{height:36px;white-space:nowrap}
+@container(max-width:580px){body.flow-mode .program-file{grid-template-columns:auto minmax(0,1fr)}.flow-file-actions{grid-column:1/-1;justify-content:flex-end}.flow-palette{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.flow-palette label{flex-direction:column;align-items:stretch}.flow-palette .flow-block-actions{grid-column:1/-1;justify-self:end}.flow-param{grid-template-columns:1fr 1fr}body.flow-mode .execution-settings{display:flex;flex-direction:column;align-items:stretch}body.flow-mode .execution-settings #run{align-self:flex-start}}

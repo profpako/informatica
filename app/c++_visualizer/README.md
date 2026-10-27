@@ -16,6 +16,41 @@ Editor, flowchart, runtime di osservazione e analisi Python hanno un'unica sorge
 in questa cartella. `transport.js` usa le API locali; la build online sostituisce
 solo l'adattatore con il Worker WASM. `app.js` viene distribuito senza riscritture.
 
+Il **divisore verticale** fra programma e memoria permette di regolare la larghezza
+dei due pannelli trascinandolo, anche durante l'esecuzione. La proporzione viene
+ricordata nel browser ed è condivisa fra C++ e Flowchart, in locale e nella build
+WASM. Con Tab si raggiunge il divisore; le frecce sinistra/destra spostano la
+divisione, Home/Fine raggiungono i limiti e Invio o doppio clic ripristinano metà
+spazio per pannello. I limiti mantengono leggibili entrambi i riquadri.
+Fino a 1050 px le due modalità impilano i pannelli e nascondono il divisore,
+conservando la preferenza per quando si torna a una finestra più larga.
+La regolazione non modifica codice, diagramma, input o passo della traccia.
+
+L'**editor C++** usa CodeMirror distribuito localmente, con colori della sintassi,
+numeri di riga, ricerca/sostituzione e cronologia di Annulla/Ripeti.
+Aprire `{`, `(`, `[` o le virgolette inserisce anche la chiusura; Invio fra `{}`
+crea il corpo rientrato e allinea la graffa finale. Il rientro segue la struttura
+C++, senza trattare le graffe in stringhe e commenti come blocchi del programma.
+**Spazi per Tab** sceglie da 1 a 8 spazi (inizialmente 4) e viene ricordato.
+Tab/Shift+Tab regolano il rientro anche delle selezioni; le tabulazioni già presenti
+cambiano larghezza visiva senza riscrivere il file.
+
+Dopo due caratteri compaiono **suggerimenti** per nomi già presenti nel file,
+tipi semplici, parole chiave C++ e nomi comuni delle librerie supportate.
+Ctrl+Spazio apre il menu manualmente, le frecce scelgono, Invio o Tab accettano,
+Esc chiude. Commenti e stringhe non alimentano i suggerimenti.
+È un completamento lessicale del documento: può proporre nomi di altri ambiti;
+non risolve overload, tipi dei membri o validità semantica. Il compilatore resta
+responsabile di queste verifiche durante l'esecuzione.
+
+Ctrl/Cmd+/ commenta o decommenta le righe, Ctrl/Cmd+F cerca; Ctrl+H oppure
+Cmd+Alt+F su Mac apre la sostituzione. Senza menu aperti, Esc seguito da Tab
+permette di uscire dall'editor con la tastiera. Le modifiche aggiornano sorgente,
+salvataggio e traccia; esempi e file caricati rimangono sincronizzati con la vista
+di esecuzione. Le funzioni sono condivise fra locale e browser/WASM e non
+richiedono connessioni a CDN o servizi di completamento.
+Versione, integrità e licenza dell'editor sono in [vendor/codemirror/README.md](vendor/codemirror/README.md).
+
 Dopo un push su **main**, la pipeline verifica sempre sito, tema ed editor e
 ricostruisce il laboratorio. I test del compilatore e del motore WASM vengono
 ripetuti se cambia il codice, un test, la toolchain o il workflow, oppure se manca

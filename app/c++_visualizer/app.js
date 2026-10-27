@@ -1,5 +1,7 @@
 'use strict';
 import {request as requestAPI, storagePrefix, connectionError} from './transport.js';
+import {setupWorkspaceLayout} from './workspace-layout.js';
+import {setupCodeEditor} from './code-editor.js';
 const $ = id => document.getElementById(id);
 const code = $('code'), input = $('input'), programName = $('program-name');
 let token = '', examples = [], steps = [], position = 0, timer = null, version = 0, retainedMemory = null;
@@ -12,6 +14,7 @@ const storage = {
   get(key) { try { return localStorage.getItem(storagePrefix + key); } catch { return null; } },
   set(key, value) { try { localStorage.setItem(storagePrefix + key, value); } catch { /* L'editor funziona anche senza storage. */ } }
 };
+setupWorkspaceLayout($('workspace-layout'), $('workspace-divider'), storage);
 let mode = 'cpp';
 const flowEditor = new FlowchartEditor($('flow-pane'), {
   sourceRoot: $('flow-code-pane'),
@@ -49,6 +52,7 @@ function setMode(next, initial = false) {
   programName.value = mode === 'flow' ? flowEditor.document.title || '' : storage.get('program-name') || '';
   input.value = storage.get(mode === 'cpp' ? 'input' : 'flow-input') ?? '';
   storage.set('mode', mode);
+  codeEditor.sync();
   if (!initial) invalidate();
 }
 function element(tag, text, className) {
@@ -64,6 +68,7 @@ function pause() {
   $('play').setAttribute('aria-label', 'Riproduci automaticamente');
 }
 function updateLines() {
+  codeEditor.sync();
   $('gutter').replaceChildren(...code.value.split('\n').map((_, i) => element('span', i + 1)));
   $('gutter').scrollTop = code.scrollTop;
 }
@@ -473,19 +478,14 @@ $('manual-input-form').addEventListener('submit', async event => {
 code.addEventListener('input', () => { $('examples').value = ''; invalidate(); }); input.addEventListener('input', invalidate);
 code.addEventListener('scroll', () => { $('gutter').scrollTop = code.scrollTop; });
 $('code-view').addEventListener('scroll', () => { $('gutter').scrollTop = $('code-view').scrollTop; });
-code.addEventListener('keydown', event => {
-  if (event.key === 'Tab') {
-    event.preventDefault(); const start = code.selectionStart;
-    code.setRangeText('    ', start, code.selectionEnd, 'end'); $('examples').value = ''; invalidate();
-  }
-});
-$('edit').addEventListener('click', () => { invalidate(); code.focus(); });
+const codeEditor = setupCodeEditor(code, $('tab-size'), storage);
+$('edit').addEventListener('click', () => { invalidate(); codeEditor.focus(); });
 $('new').addEventListener('click', () => {
-  $('examples').value = ''; code.value = ''; input.value = ''; programName.value = ''; storage.set('program-name', ''); invalidate(); code.focus();
+  $('examples').value = ''; code.value = ''; input.value = ''; programName.value = ''; storage.set('program-name', ''); invalidate(); codeEditor.focus();
 });
 $('examples').addEventListener('change', () => {
   const example = $('examples').value === '' ? null : examples[Number($('examples').value)];
-  code.value = example?.code ?? ''; input.value = example?.input ?? ''; programName.value = example?.title ?? ''; storage.set('program-name', programName.value); invalidate(); code.focus();
+  code.value = example?.code ?? ''; input.value = example?.input ?? ''; programName.value = example?.title ?? ''; storage.set('program-name', programName.value); invalidate(); codeEditor.focus();
 });
 $('run').addEventListener('click', async () => {
   cancelManual();
@@ -512,6 +512,7 @@ $('run').addEventListener('click', async () => {
     if (!response.ok) throw new Error(data.error || 'Impossibile generare la traccia.');
     steps = data.steps; position = 0; manualSession = data.session || null;
     code.hidden = true; $('code-view').hidden = false; $('edit').hidden = false;
+    codeEditor.sync();
     $('code-view').replaceChildren(...source.split('\n').map(line => element('span', line || ' ', 'code-line')));
     $('warnings-box').hidden = !data.warnings; $('warnings').textContent = data.warnings || '';
     setRunHint(data.error ? 'Traccia disponibile fino al punto di errore.' : manualSession ? 'Segui i passi: alla lettura inserisci il valore nella console.' : `${steps.length} passi pronti da esplorare.`);

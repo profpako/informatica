@@ -41,7 +41,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {'token': TOKEN, 'standards': STANDARDS, 'examples': json.loads((ROOT / 'examples.json').read_text())})
         assets = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript; charset=utf-8'), '/style.css': ('style.css', 'text/css; charset=utf-8')}
         assets.update({f'/{name}': (name, 'text/css; charset=utf-8' if name.endswith('.css') else 'text/javascript; charset=utf-8')
-                       for name in ['flowchart-core.js', 'flowchart-editor.js', 'flowchart.css', 'program-files.js', 'transport.js']})
+                       for name in ['flowchart-core.js', 'flowchart-editor.js', 'flowchart.css', 'program-files.js', 'transport.js', 'workspace-layout.js', 'code-editor.js']})
+        assets.update({f'/vendor/codemirror/{name}': (f'vendor/codemirror/{name}', mime) for name, mime in
+                       [('codemirror.js', 'text/javascript; charset=utf-8'), ('codemirror.css', 'text/css; charset=utf-8'), ('LICENSE', 'text/plain; charset=utf-8')]})
         if path not in assets:
             return self.send(404, {'error': 'Risorsa non trovata.'})
         name, mime = assets[path]

@@ -17,5 +17,10 @@ origine: codice degli studenti e input non vengono inviati a servizi di compilaz
   sorgenti https://github.com/pyodide/pyodide/tree/314.0.7.
 - CPython 3.14.2: licenza e attribuzioni in PYTHON-LICENSE.txt;
   sorgenti https://github.com/python/cpython/tree/v3.14.2.
+- CodeMirror 5.65.21: MIT. Il bundle dell'editor e la licenza sono distribuiti
+  insieme agli asset applicativi in `vendor/codemirror/`. Sorgenti:
+  https://github.com/codemirror/codemirror5/tree/5.65.21.
+  L'archivio npm è verificato con SHA-512; versione, integrità ed elenco dei file
+  concatenati sono documentati in `app/c++_visualizer/vendor/codemirror/README.md`.
 
 Gli aggiornamenti della toolchain richiedono una nuova verifica di compatibilità.
