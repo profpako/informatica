@@ -264,7 +264,7 @@ rimangono salvati nel browser.
 
 ## Una lezione
 
-1. Scrivere/incollare codice nell'editor vuoto, oppure scegliere uno dei sei esempi facoltativi. **Nuovo programma** svuota editor e input e permette di ripartire da zero.
+1. Scrivere/incollare codice nell'editor vuoto, oppure scegliere uno degli esempi facoltativi. **Nuovo programma** svuota editor e input e permette di ripartire da zero.
 2. Scegliere **Inserimento input**. Con **Preparati prima dell’esecuzione**, inserire nel campo **Input del programma** tutti i valori richiesti da `cin`, separati da spazi o INVIO. Con **Manualmente, una variabile alla volta**, seguire i passi e inserire ogni valore nella console quando viene richiesto, premendo INVIO. Ogni istruzione di lettura mostra nella console i dati che consuma, seguiti da INVIO: due `cin` separati mostrano due risposte anche con input `4 6`. Una lettura concatenata (`cin >> a >> b`) con input preparati mostra un'unica risposta; `getline` mantiene spazi e righe.
 3. Premere **Visualizza esecuzione**.
 4. Usare **Avanti**, **Indietro**, il cursore o la riproduzione automatica.
@@ -401,23 +401,40 @@ successivo, così non resta un risultato vecchio durante il resto dell'esecuzion
 ## Supporto e limiti
 
 Il dettaglio è in [COSTRUTTI.md](COSTRUTTI.md). Sono coperti i costrutti del nucleo
-iniziale: tipi semplici, stringhe di base, array monodimensionali, condizioni e
+iniziale: tipi semplici, stringhe di base, array a una o due dimensioni, struct, condizioni e
 cicli, funzioni, riferimenti, puntatori di base, ambiti e console.
 
-- Questa distribuzione esegue programmi su **macOS**. Windows e Linux richiedono
+- La versione locale esegue programmi su **macOS**. Windows e Linux richiedono
   un isolamento del processo diverso e non sono stati verificati.
 - Gli include ammessi sono `<iostream>`, `<string>`, `<iomanip>`, `<type_traits>`. Macro e altre
   direttive del preprocessore non sono supportate.
-- Matrici, struct, file, stringhe C, memoria dinamica e contenitori STL non sono
-  inclusi. Gli array di caratteri sono utilizzabili per singoli elementi.
+- In modalità **C++**, matrici come `int a[100][50];` compaiono per righe e colonne,
+  con indici `[riga][colonna]` e scorrimento interno. Sono supportati inizializzazione
+  completa/parziale, input e parametri `T m[][N]`, anche const o per riferimento.
+- Le **struct** con nome vanno definite fuori dalle funzioni e contengono campi dati
+  pubblici: tipi semplici, stringhe, array, puntatori semplici e altre struct.
+  Si vedono percorsi come `.indirizzo.cap` e `[1].nome`, tipi dei campi, valori,
+  indirizzi e modifiche. Sono supportati array di struct, copie, passaggio per
+  valore/riferimento/puntatore, restituzione per valore e, da C++20, designatori.
+  Una dichiarazione senza inizializzatore conserva `?` nei campi numerici;
+  stringhe e inizializzatori costanti dei campi seguono il C++.
+  Metodi, costruttori personalizzati, ereditarietà, union, struct vuote/anonime/locali,
+  bit-field e campi riferimento restano esclusi. Le definizioni dei tipi annidati
+  vanno scritte separatamente, prima della struct che le usa.
+- Queste estensioni riguardano il C++; l'editor e la conversione Flowchart restano
+  nel proprio sottoinsieme. File, stringhe C, memoria dinamica e contenitori STL
+  non sono inclusi. Gli array di caratteri sono utilizzabili per singoli elementi.
 - Le inizializzazioni globali con chiamate a funzione, i ritorni per riferimento
   o puntatore, l'aritmetica dei puntatori e le dichiarazioni dentro la condizione
   di `if`/`while` non sono inclusi. `main` deve avere forma `int main()`.
 - Con input preparati, se finiscono la traccia si arresta con un messaggio e si
   può completare il campo e riavviare. Con input manuali il processo resta in attesa
   della risposta; una sessione scade dopo 10 minuti senza input.
-- Limiti: 30.000 byte di codice, 10.000 byte di input, 100 celle per array,
-  800 stati, 40 chiamate annidate e 20.000 caratteri di output. Il contenuto delle
+- Limiti: 30.000 byte di codice, 10.000 byte di input, 100 elementi per dimensione,
+  5.000 celle per variabile composta, 12 MiB per traccia, 800 stati,
+  40 chiamate annidate e 20.000 caratteri di output. Matrici grandi con molti passi
+  possono raggiungere il limite della traccia: la diagnosi invita a ridurre celle
+  o iterazioni. Il contenuto delle
   stringhe nella memoria visualizzata è troncato a 2.000 caratteri per cella.
 - Sono controllate letture non inizializzate, accessi agli array e dereferenziazioni
   nel perimetro previsto. UBSan aggiunge controlli su alcune operazioni non valide;

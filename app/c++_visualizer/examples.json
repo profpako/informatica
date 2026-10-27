@@ -28,5 +28,15 @@
     "title": "Puntatori e celle",
     "input": "",
     "code": "#include <iostream>\nusing namespace std;\n\nvoid incrementa(int *p) {\n    *p = *p + 1;\n}\n\nint main() {\n    int numero = 10;\n    int voti[3] = {6, 7, 8};\n    int *p = &numero;\n    incrementa(p);\n    p = &voti[1];\n    incrementa(p);\n    cout << \"Numero: \" << numero << endl;\n    cout << \"Secondo voto: \" << voti[1] << endl;\n    return 0;\n}\n"
+  },
+  {
+    "title": "Matrici e parametri",
+    "input": "",
+    "code": "#include <iostream>\nusing namespace std;\n\nvoid aggiorna(int m[][3]) {\n    m[1][2] = 9;\n}\n\nint main() {\n    int matrice[2][3] = {{1, 2, 3}, {4, 5, 6}};\n    aggiorna(matrice);\n    cout << matrice[1][2] << endl;\n}\n"
+  },
+  {
+    "title": "Struct e array di struct",
+    "input": "",
+    "code": "#include <iostream>\n#include <string>\nusing namespace std;\n\nstruct Indirizzo {\n    string citta;\n    int cap;\n};\n\nstruct Studente {\n    string nome;\n    int eta;\n    Indirizzo indirizzo;\n    int voti[2];\n};\n\nvoid compleanno(Studente &s) {\n    s.eta++;\n}\n\nint main() {\n    Studente classe[2] = {\n        {\"Ada\", 17, {\"Roma\", 100}, {7, 8}},\n        {\"Luca\", 18, {\"Milano\", 20100}, {6, 9}}\n    };\n    Studente copia = classe[0];\n    compleanno(classe[0]);\n    copia.voti[0] = 10;\n    cout << classe[0].nome << \" \" << classe[0].eta << endl;\n    cout << copia.nome << \" \" << copia.eta << \" \" << copia.voti[0] << endl;\n}\n"
   }
 ]

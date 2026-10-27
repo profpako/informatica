@@ -30,6 +30,8 @@ riscrittura del codice del docente in un linguaggio di simulazione.
 | Risoluzione delle chiamate | Overloading semplice su tipi numerici; parametri predefiniti | Funzione e valori effettivamente selezionati |
 | Ambiti e durata | Globali, locali di funzione e blocco, omonimia, `::nome`, locali `static` | Oggetti distinti; durata corretta, inclusa persistenza delle statiche |
 | Array monodimensionali | Tipi semplici e `string`; dimensione costante/dedotta, inizializzazione completa/parziale, indicizzazione, `sizeof` | Celle contigue, indici, valori e modifiche |
+| Matrici (modalità C++) | `T m[R][C]`, prima dimensione dedotta, inizializzazione completa/parziale, parametri `T m[][N]`, const e riferimenti ad array | Griglia con indici `[riga][colonna]`, controlli separati sui due indici |
+| Struct (modalità C++) | Struct con nome definite fuori dalle funzioni, campi pubblici semplici/string/array/puntatore/altre struct; array di struct, copie, parametri e ritorno per valore | Campi con percorso e tipo, inizializzazione distinta per campo, alias e indirizzi reali |
 | Parametri array | `T arr[]`, `const T arr[]`, dimensione separata | Parametro adattato a puntatore, elementi condivisi con il chiamante |
 | Puntatori di base | `T*`, `&`, `*`, `nullptr`, puntatore a variabile o elemento di array | Indirizzo contenuto nel puntatore e oggetto raggiunto |
 | Stringhe di base | `string`, assegnazione, confronto, concatenazione, array di stringhe | Contenuto testuale leggibile; dettagli interni della libreria esclusi |
@@ -47,17 +49,23 @@ I limiti operativi completi sono nel [README.md](README.md).
 
 | Costrutto osservato | Esito della valutazione preliminare |
 | --- | --- |
-| Matrici e parametri `T m[][N]` | Verificati nel compilatore; visualizzazione bidimensionale rinviata alla fase successiva |
-| Struct, struct annidate, array di struct | Caso base verificato nel compilatore; visualizzazione dei campi rinviata alla fase successiva |
 | Stringhe C e operazioni di `<cstring>` | Gestione dei buffer e terminatore da progettare; una stringa letterale nell'output resta prevista nel nucleo |
 | File di testo e binari | Esclusi dalla prima versione; richiedono gestione dei dati e degli effetti esterni |
 | `vector`, `map`, algoritmi, lambda e metodi | Esclusi dalla prima versione; compilabilità e visualizzazione delle strutture sono verifiche distinte |
 | Heap, `new`/`delete`, puntatori avanzati | Esclusi dalla prima versione; i puntatori di base del nucleo si riferiscono a variabili e array esistenti |
-| Inizializzatori con designatori `.campo = ...` | Standard da C++20; la visualizzazione richiede struct/classi, ancora escluse |
+| Inizializzatori con designatori `.campo = ...` | Supportati in modalità C++20/23 per le struct del sottoinsieme |
 | Classi avanzate, ereditarietà, eccezioni, template scritti dal docente, concorrenza | Fuori dal perimetro iniziale |
 
 Un compilatore reale può accettare costrutti esterni al perimetro. Questo non
 autorizza l'interfaccia a presentarli come correttamente visualizzati.
+
+Matrici e struct usano lo stesso motore e la stessa interfaccia in locale e nel
+browser. Le definizioni delle struct annidate vanno scritte separatamente;
+restano esclusi metodi, costruttori personalizzati, ereditarietà, union, struct
+locali/anonime/vuote, bit-field e campi riferimento. Gli inizializzatori dei campi
+devono essere costanti. Limiti: 100 elementi per dimensione, 5.000 celle per
+variabile composta e traccia entro 12 MiB; le tracce troppo grandi si arrestano
+con una diagnosi. La conversione e l'editor Flowchart non acquisiscono questi costrutti.
 
 ## Verifica preliminare sul compilatore
 

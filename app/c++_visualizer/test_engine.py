@@ -342,7 +342,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(result['steps'][-1]['output'], 'Età: 17')
 
     def test_reject_unsupported_and_invalid(self):
-        for code in ['#include <fstream>\nint main(){}', 'int main(){int m[2][3];}', 'int main(){int *p=new int;}',
+        for code in ['#include <fstream>\nint main(){}', 'int main(){int m[2][3][4];}', 'int main(){int *p=new int;}',
                      'int &f(int &n){return n;}int main(){int x=1;f(x);}',
                      'int *f(int *p){return p;}int main(){int x=1;f(&x);}']:
             with self.subTest(code=code), self.assertRaises(CodeError):

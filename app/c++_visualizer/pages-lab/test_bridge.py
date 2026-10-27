@@ -31,6 +31,11 @@ class BrowserBridgeTests(unittest.TestCase):
         expected = engine.Instrumenter(source, prefix, tree).build()
         self.assertEqual(call('instrument', {'code': code})['code'], expected)
 
+    def test_composites_match_local_engine(self):
+        code = 'struct P{int x;int a[2];};void f(int m[][3],P &p){m[1][2]=p.x;}int main(){int m[2][3]={};P p{4,{1,2}};f(m,p);}'
+        source, prefix, tree = native_parse(code)
+        self.assertEqual(call('instrument', {'code': code})['code'], engine.Instrumenter(source, prefix, tree).build())
+
     def test_import_and_type_resolution(self):
         code = '#include <iostream>\nint main(){int i=0;while(i<2){i++;}std::cout<<i;}'
         document = call('import', {'code': code})['document']
@@ -43,6 +48,8 @@ class BrowserBridgeTests(unittest.TestCase):
             call('instrument', {'code': 'int main(){}', 'flow': {'deferred': [{'line': True}]}})
         with self.assertRaises(engine.CodeError):
             call('instrument', {'code': 'int main(){int *p = new int;}'})
+        with self.assertRaisesRegex(engine.CodeError, 'matrici'):
+            call('import', {'code': 'int main(){int m[2][3]={};m[1][2]=4;}'})
 
 
 if __name__ == '__main__':

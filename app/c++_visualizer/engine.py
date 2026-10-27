@@ -30,7 +30,7 @@ def standard_flag(standard='17'):
 
 def walk(node):
     yield node
-    if node.get("kind") in {"CXXDefaultArgExpr", "CXXDefaultInitExpr"}:
+    if node.get("isImplicit") or node.get("kind") in {"CXXDefaultArgExpr", "CXXDefaultInitExpr"}:
         return
     for child in node.get("inner", []) + node.get("array_filler", []):
         yield from walk(child)
@@ -92,6 +92,9 @@ class Instrumenter:
         self.definitions = {n['id']: definitions.get(n.get('mangledName', n['name']))
                             for n in tree.get('inner', []) if n.get('kind') == 'FunctionDecl'}
         self.declarations = {n['id']: n for n in walk(tree) if n.get('kind') in {'VarDecl', 'ParmVarDecl'}}
+        self.records = {n['name']: n for n in tree.get('inner', [])
+                        if n.get('kind') == 'CXXRecordDecl' and n.get('name') and n.get('completeDefinition')}
+        self.fields = {n['id'] for n in walk(tree) if n.get('kind') == 'FieldDecl'}
         self.callsites = {}
         self.conditions = {}
         self.condition_capture = False
@@ -127,15 +130,29 @@ class Instrumenter:
     def validate(self):
         denied = {"CXXNewExpr", "CXXDeleteExpr", "CXXThrowExpr", "CXXTryStmt", "LambdaExpr",
                   "GCCAsmStmt", "MSAsmStmt", "GotoStmt", "IndirectGotoStmt", "CXXReinterpretCastExpr",
-                  "CXXConstCastExpr", "CXXDynamicCastExpr", "CXXRecordDecl", "RecordDecl", "EnumDecl",
+                  "CXXConstCastExpr", "CXXDynamicCastExpr", "RecordDecl", "EnumDecl",
                   "NamespaceDecl", "FunctionTemplateDecl", "LinkageSpecDecl", "CXXForRangeStmt",
                   "AttributedStmt", "CXXTypeidExpr", "VAArgExpr", "StmtExpr"}
         allowed_calls = {"getline", "setw", "setprecision", "ignore", "size", "length"}
         for node in walk(self.tree):
             kind = node.get("kind")
+            if node.get('isImplicit'):
+                continue
+            if kind == 'CXXRecordDecl':
+                if node not in self.tree.get('inner', []) or node.get('tagUsed') != 'struct' or not node.get('name') or node.get('bases'):
+                    self.error(node, 'usa struct con nome definite fuori dalle funzioni, senza ereditarietà.')
+                if node.get('completeDefinition') and not any(m.get('kind') == 'FieldDecl' for m in node.get('inner', [])):
+                    self.error(node, 'la struct deve avere almeno un campo dati da visualizzare.')
+                for member in node.get('inner', []):
+                    if member.get('isImplicit'):
+                        continue
+                    if member.get('kind') != 'FieldDecl' or not member.get('name') or member.get('isBitfield') or '&' in member.get('type', {}).get('qualType', ''):
+                        self.error(member, 'sono supportati campi dati pubblici, senza metodi, bit-field o campi riferimento.')
+                    if member.get('hasInClassInitializer') and any(n.get('kind') in {'CallExpr', 'CXXMemberCallExpr', 'DeclRefExpr', 'MemberExpr'} for n in walk(member)):
+                        self.error(member, 'usa inizializzatori dei campi costanti; sposta i calcoli in main.')
             if node is not self.tree and kind in denied:
                 self.error(node, f"costrutto {kind} non supportato nella prima versione.")
-            if kind in {"VarDecl", "ParmVarDecl"}:
+            if kind in {"VarDecl", "ParmVarDecl", "FieldDecl"}:
                 self.validate_type(node)
                 if node.get("storageClass") == "extern" or "tls" in node:
                     self.error(node, "variabili extern o thread_local non supportate.")
@@ -170,14 +187,15 @@ class Instrumenter:
 
     def validate_type(self, node):
         t = node.get("type", {}).get("qualType", "")
-        if t.count("[") > 1 or "(" in t or t.count("*") > 1 or "&&" in t or node.get("isParameterPack"):
-            self.error(node, f"tipo {t} non supportato; matrici e puntatori avanzati sono estensioni successive.")
-        base = re.sub(r"\bconst\b|\bvolatile\b|\bstd::|[&*]|\[\d+\]|\s", "", t)
-        if base not in {"int", "float", "double", "char", "bool", "string"} or "volatile" in t:
+        simple = re.sub(r'\(\s*[*&]\s*\)', '', t)
+        if t.count("[") > 2 or "(" in simple or t.count("*") > 1 or "&&" in t or node.get("isParameterPack"):
+            self.error(node, f"tipo {t} non supportato; usa al massimo due dimensioni e puntatori semplici.")
+        base = re.sub(r"\bconst\b|\bvolatile\b|\bstd::|\b__cv_user::|\bstruct\s+|[()&*]|\[\d+\]|\s", "", t)
+        if base not in {"int", "float", "double", "char", "bool", "string", *self.records} or "volatile" in t:
             self.error(node, f"tipo {t} non supportato.")
-        sizes = re.findall(r"\[(\d+)\]", t)
-        if sizes and int(sizes[0]) > 100:
-            self.error(node, "limite di 100 elementi per array.")
+        sizes = [int(n) for n in re.findall(r"\[(\d+)\]", t)]
+        if sizes and (max(sizes) > 100 or (len(sizes) == 2 and sizes[0] * sizes[1] > 5000)):
+            self.error(node, "limite di 100 elementi per dimensione e 5.000 celle per matrice.")
 
     def watcher(self, node, global_scope=False, function=""):
         name = node.get("name")
@@ -186,7 +204,8 @@ class Instrumenter:
         t = node["type"]["qualType"]
         persistent = global_scope or node.get("storageClass") == "static"
         delayed = node['kind'] == 'VarDecl' and self.line(node) in self.deferred
-        init = not delayed and bool(node.get("init") or persistent or node["kind"] == "ParmVarDecl" or "string" in t)
+        default_constructed = node.get('init') == 'call' and not self.text(node).rstrip().endswith((')', '}'))
+        init = not delayed and bool(node.get("init") and not default_constructed or persistent or node["kind"] == "ParmVarDecl")
         label = function + "::" + name if persistent and function else name
         storage = "static " if node.get("storageClass") == "static" and not global_scope else ""
         return (f'{storage}auto {self.unique()} = cv::watch({json.dumps(label)}, {json.dumps(t)}, {name}, '
@@ -198,10 +217,13 @@ class Instrumenter:
         kind, inner = node.get('kind'), node.get('inner', [])
         if kind == 'DeclRefExpr':
             declaration = self.declarations.get(node.get('referencedDecl', {}).get('id'))
-            return {'declaration': declaration['loc']['offset'], 'index': 0} if declaration else {}
+            return {'declaration': declaration['loc']['offset'], 'path': ''} if declaration else {}
         if kind == 'ArraySubscriptExpr' and inner[1].get('kind') == 'IntegerLiteral':
             source = self.argument_source(inner[0])
-            return {**source, 'index': int(inner[1]['value'])} if source else {}
+            return {**source, 'path': source['path'] + '[' + inner[1]['value'] + ']'} if source else {}
+        if kind == 'MemberExpr' and not node.get('isArrow'):
+            source = self.argument_source(inner[0])
+            return {**source, 'path': source['path'] + '.' + node['name']} if source else {}
         if kind in {'ImplicitCastExpr', 'ParenExpr', 'ExprWithCleanups'} and len(inner) == 1:
             return self.argument_source(inner[0])
         if kind == 'UnaryOperator' and node.get('opcode') == '&':
@@ -215,9 +237,15 @@ class Instrumenter:
         captured = f', {bounds(node)[0]}, {bounds(node)[1]}' if self.condition_capture else ''
         operator = next((n.get('referencedDecl', {}).get('name') for n in walk(children[0])
                          if n.get('referencedDecl', {}).get('name', '').startswith('operator')), '') if kind == 'CXXOperatorCallExpr' and children else ''
-        if operator == 'operator=' and len(children) == 3 and 'string' in children[1].get('type', {}).get('qualType', ''):
+        if kind == 'MemberExpr' and node.get('referencedMemberDecl') in self.fields:
+            base = self.expression(children[0], True)
+            rendered = f'cv::pointer(({base}), {line})->{node["name"]}' if node.get('isArrow') else f'({base}).{node["name"]}'
+            return rendered
+        if kind == 'CXXConstructExpr' and len(children) == 1 and '&' in node.get('ctorType', {}).get('qualType', ''):
+            return self.splice(node, [(children[0], f'cv::checked(({self.expression(children[0])}), {line})')])
+        if operator == 'operator=' and len(children) == 3:
             lhs, rhs = self.expression(children[1], True), self.expression(children[2])
-            return f'cv::assign([&](){{return ({rhs});}}, [&]() -> decltype(auto) {{return ({lhs});}})'
+            return f'cv::assign([&](){{return cv::checked(({rhs}), {line});}}, [&]() -> decltype(auto) {{return ({lhs});}})'
         if self.deferred and kind == 'DeclRefExpr' and not writing and 'string' in node.get('type', {}).get('qualType', ''):
             declaration = self.declarations.get(node.get('referencedDecl', {}).get('id'))
             if declaration:
@@ -299,7 +327,13 @@ class Instrumenter:
             declarator = {"range": {"begin": var["loc"], "end": var["range"]["end"]}}
             base_type = re.sub(r"\[\d+\]", "", var["type"]["qualType"])
             storage = "static " if var.get("storageClass") == "static" else ""
-            declarations.append(storage + base_type + " " + self.splice(declarator, changes) + ";" + self.watcher(var, function=function))
+            if re.search(r'\([*&]\)', base_type):
+                typed_name = re.sub(r'\(([*&])\)', lambda m: '(' + m[1] + var['name'] + ')', var['type']['qualType'])
+                initializer = ' = ' + self.expression(var['inner'][-1]) if var.get('init') else ''
+                declaration = typed_name + initializer
+            else:
+                declaration = base_type + " " + self.splice(declarator, changes)
+            declarations.append(storage + declaration + ";" + self.watcher(var, function=function))
         return "".join(declarations)
 
     def condition_test(self, cond, owner, kind, body, otherwise=None):
@@ -409,6 +443,13 @@ class Instrumenter:
                 if semicolon < 0:
                     self.error(node, "dichiarazione globale non riconosciuta.")
                 global_insertions.append((semicolon + 1, self.watcher(node, True)))
+            elif kind == 'CXXRecordDecl':
+                if node.get('completeDefinition'):
+                    fields = ''.join(f'f({json.dumps("." + m["name"])}, {json.dumps(m["type"]["qualType"])}, o.{m["name"]}, {str(m.get("hasInClassInitializer", False)).lower()});'
+                                     for m in node.get('inner', []) if m.get('kind') == 'FieldDecl')
+                    visitor = f'template<class O,class F> void __cv_fields(cv::TypeTag<{node["name"]}>, O &o,F f){{{fields}}}'
+                    semicolon = self.source.find(b';', bounds(node)[1])
+                    global_insertions.append((semicolon + 1, visitor))
             elif kind not in {"UsingDirectiveDecl", "UsingDecl", "UsingShadowDecl", "EmptyDecl"}:
                 self.error(node, f"dichiarazione {kind} non supportata.")
         if not main:
@@ -416,7 +457,7 @@ class Instrumenter:
         edits = [(bounds(n)[0], bounds(n)[1], text) for n, text in changes]
         edits += [(pos, pos, text) for pos, text in global_insertions]
         output = self.source
-        for a, b, text in sorted(edits, key=lambda item: item[0], reverse=True):
+        for a, b, text in reversed(sorted(edits, key=lambda item: item[0])):
             output = output[:a] + text.encode() + output[b:]
         return '#include "runtime.hpp"\n' + output.decode() + '\nint main(){cv::start(); int result=__cv_user::main(); cv::finish(); return result;}\n'
 
@@ -487,15 +528,17 @@ def trace_result(snapshots, source, instrumenter, roles, warnings, returncode=0,
                                    if v['declaration'] == descriptor['source'].get('declaration')
                                    and v['frame'] in {0, frame['caller']}), None)
                     cell = variable['cells'][0]
+                    source_path = descriptor['source'].get('path', '')
                     origin = {'kind': descriptor['kind'], 'expression': descriptor['expression'],
-                              'value': cell['value'], 'initialized': cell['initialized'],
+                              'value': {c['path']: c['value'] for c in variable['cells']} if len(variable['cells']) > 1 else cell['value'],
+                              'initialized': all(c['initialized'] for c in variable['cells']),
                               'caller': frame['caller'], 'sourceId': source_variable['id'] if source_variable else None,
-                              'sourceIndex': descriptor['source'].get('index', 0)}
+                              'sourceIndex': next((i for i, c in enumerate(source_variable['cells'])
+                                                   if c.get('path', '') == source_path or c.get('path', '').startswith((source_path + '.', source_path + '['))), 0) if source_variable else 0}
                     if source_variable:
                         source_frame = frames.get(source_variable['frame'])
                         origin['sourceLabel'] = (source_frame['name'] + '()' if source_frame else 'Globali/statiche') + ' · ' + source_variable['name']
-                        if source_variable['array']:
-                            origin['sourceLabel'] += f"[{origin['sourceIndex']}]"
+                        origin['sourceLabel'] += source_variable['cells'][origin['sourceIndex']].get('path', '')
                     origins[variable['id']] = origin
             if variable['id'] in origins:
                 variable['origin'] = origins[variable['id']]

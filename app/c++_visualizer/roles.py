@@ -3,6 +3,8 @@
 
 def nodes(node):
     yield node
+    if node.get('isImplicit') or node.get('kind') in {'CXXDefaultArgExpr', 'CXXDefaultInitExpr'}:
+        return
     for child in node.get('inner', []) + node.get('array_filler', []):
         yield from nodes(child)
 
@@ -30,7 +32,9 @@ def classify_roles(tree):
         if kind == 'ArraySubscriptExpr':
             indexes = [n for n in nodes(inner[1]) if n.get('kind') == 'IntegerLiteral']
             part = indexes[0]['value'] if inner[1].get('kind') == 'IntegerLiteral' else '*'
-            return {(key, part) for key, _ in location(inner[0])}
+            return {(key, (prefix or '') + '[' + part + ']') for key, prefix in location(inner[0])}
+        if kind == 'MemberExpr':
+            return {(key, (part or '') + '.' + node['name']) for key, part in location(inner[0])}
         if kind == 'UnaryOperator' and node.get('opcode') == '*':
             return {(key, (part if part is not None else '0') if any(c in declarations[key]['type']['qualType'] for c in '*[') else part)
                     for key, part in location(inner[0])}
@@ -58,7 +62,7 @@ def classify_roles(tree):
 
     def sources(node):
         kind = node.get('kind')
-        if kind in {'DeclRefExpr', 'ArraySubscriptExpr'} or (kind == 'UnaryOperator' and node.get('opcode') == '*'):
+        if kind in {'DeclRefExpr', 'ArraySubscriptExpr', 'MemberExpr'} or (kind == 'UnaryOperator' and node.get('opcode') == '*'):
             return location(node)
         if kind in {'CallExpr', 'CXXMemberCallExpr', 'UnaryExprOrTypeTraitExpr'} or (kind == 'UnaryOperator' and node.get('opcode') == '&'):
             return set()
@@ -77,7 +81,7 @@ def classify_roles(tree):
 
         def write(locations, assigned):
             writes.update(locations)
-            assigned.update(key for key in locations if key[1] != '*')
+            assigned.update(key for key in locations if '*' not in (key[1] or ''))
 
         def visit(node, assigned):
             if assigned is None:

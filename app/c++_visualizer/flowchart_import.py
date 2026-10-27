@@ -115,6 +115,8 @@ class Importer:
 
     def type(self, node):
         value = node.get('type', {}).get('qualType', '').replace('std::', '')
+        if value.count('[') > 1:
+            self.error(node, 'Le matrici sono visualizzabili solo in modalità C++, non importabili nel Flowchart.')
         base = re.sub(r'\bconst\b|[&*]|\[\d+\]|\s', '', value)
         if base not in {'int','float','double','char','bool','string','void'}:
             self.error(node, f'Tipo non rappresentabile: {value}.')

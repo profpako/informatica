@@ -107,7 +107,8 @@ function invalidate() {
 }
 function displayValue(cell, variable) {
   if (!cell.initialized) return '?';
-  if (typeof cell.value === 'string' && !variable.pointer) return JSON.stringify(cell.value);
+  if (typeof cell.value === 'string' && !(cell.pointer ?? variable.pointer)) return JSON.stringify(cell.value);
+  if (typeof cell.value === 'object' && cell.value !== null) return JSON.stringify(cell.value);
   return String(cell.value);
 }
 function cellLink(label, variable, index = 0) {
@@ -160,7 +161,7 @@ function renderLinks(step, frozen) {
       current.append(element('span', variable.reference ? 'Alias attuale: ' : 'Destinazione attuale: '));
       if (target) {
         const index = target.cells.findIndex(c => c.address === address);
-        current.append(element('span', variable.name + ' ──▶ '), cellLink(qualifiedName(target, step) + (target.array ? `[${index}]` : ''), target, index));
+        current.append(element('span', variable.name + ' ──▶ '), cellLink(qualifiedName(target, step) + cellPath(target, index), target, index));
       } else current.append(element('span', !cell.initialized ? 'non inizializzata' : address === '0x0' ? 'nullptr: nessuna cella' : 'temporaneo o memoria non attiva'));
       relation.append(current);
       if (variable.pointer) relation.append(element('p', variable.reference
@@ -208,16 +209,45 @@ function renderRetiredVariables(record, content) {
     const heading = element('div', undefined, 'var-header');
     heading.append(element('span', variable.name, 'var-name'), element('span', variable.type, 'type'));
     row.append(heading, element('small', variable.reference ? 'Alias concluso' : 'Variabile non più allocata', 'retired-label'));
-    const cells = element('div', undefined, 'cells');
-    variable.cells.forEach((cell, index) => {
-      const box = element('div', undefined, 'cell');
-      if (variable.array) box.append(element('span', index, 'index'));
-      box.append(element('span', displayValue(cell, variable), 'value'));
-      if ($('addresses').checked) box.append(element('span', cell.address, 'address'));
-      cells.append(box);
-    });
-    row.append(cells); content.append(row);
+    row.append(renderCells(variable)); content.append(row);
   }
+}
+function cellPath(variable, index) {
+  return variable.cells[index].path ?? (variable.array ? `[${index}]` : '');
+}
+function renderCells(variable, previous, names) {
+  const scroll = element('div', undefined, 'cells-scroll');
+  const cells = element('div', undefined, 'cells');
+  const matrix = variable.dimensions?.length === 2 && variable.cells.length === variable.dimensions[0] * variable.dimensions[1];
+  if (matrix) {
+    cells.classList.add('matrix');
+    cells.style.setProperty('--columns', variable.dimensions[1]);
+    scroll.setAttribute('aria-label', `${variable.name}: ${variable.dimensions[0]} righe, ${variable.dimensions[1]} colonne`);
+  }
+  if (matrix || variable.cells.length > 100) {
+    scroll.tabIndex = 0; scroll.setAttribute('role', 'region');
+    if (!matrix) scroll.setAttribute('aria-label', 'Celle di ' + variable.name);
+  }
+  variable.cells.forEach((cell, i) => {
+    const oldCell = previous?.cells[i];
+    const changed = oldCell && (cell.initialized !== oldCell.initialized || cell.value !== oldCell.value);
+    const box = element('div', undefined, 'cell' + (changed ? ' changed' : ''));
+    if (names) box.id = `cell-${variable.id}-${i}`;
+    const path = cellPath(variable, i);
+    if (path) box.append(element('span', path, 'index'));
+    if (path.includes('.')) box.append(element('span', cell.type, 'type'));
+    box.title = `${variable.name}${path}: ${cell.type || variable.type}`;
+    box.append(element('span', displayValue(cell, variable), 'value' + (!cell.initialized ? ' uninitialized' : '')));
+    if (changed) box.append(element('span', 'cambiato', 'changed-tag'));
+    if ($('addresses').checked) box.append(element('span', cell.address, 'address'));
+    if (names && cell.pointer && cell.path) {
+      const destination = names.get(cell.value);
+      if (destination) box.append(cellLink('↗ ' + destination.label, destination.variable, destination.index));
+    }
+    cells.append(box);
+  });
+  scroll.append(cells);
+  return scroll;
 }
 function describe(step) {
   if (step.inputRequest) return `Riga ${step.line}. In attesa del valore di ${step.inputRequest.target} (${step.inputRequest.type}).`;
@@ -302,7 +332,7 @@ function renderMemory(step, previous, frozen = false, concluded = null) {
   const names = new Map();
   // Preferire l'oggetto originale al suo alias quando condividono un indirizzo.
   [...step.variables].sort((a, b) => Number(a.reference) - Number(b.reference)).forEach(v => {
-    v.cells.forEach((c, i) => { if (!names.has(c.address)) names.set(c.address, { variable: v, index: i, label: v.name + (v.array ? `[${i}]` : '') }); });
+    v.cells.forEach((c, i) => { if (!names.has(c.address)) names.set(c.address, { variable: v, index: i, label: v.name + cellPath(v, i) }); });
   });
   $('memory').replaceChildren();
   const groups = [...step.frames].reverse().map(f => ({ id: f.id, name: f.name + '()', note: frozen ? 'Fotografia finale' : `Chiamata #${f.id}` }));
@@ -331,19 +361,7 @@ function renderMemory(step, previous, frozen = false, concluded = null) {
       });
       header.append(name, element('span', variable.type, 'type'));
       row.append(header);
-      const cells = element('div', undefined, 'cells');
-      variable.cells.forEach((cell, i) => {
-        const oldCell = old.get(variable.id)?.cells[i];
-        const changed = oldCell && (cell.initialized !== oldCell.initialized || cell.value !== oldCell.value);
-        const box = element('div', undefined, 'cell' + (changed ? ' changed' : ''));
-        box.id = `cell-${variable.id}-${i}`;
-        if (variable.array) box.append(element('span', i, 'index'));
-        box.append(element('span', displayValue(cell, variable), 'value' + (!cell.initialized ? ' uninitialized' : '')));
-        if (changed) box.append(element('span', 'cambiato', 'changed-tag'));
-        if ($('addresses').checked) box.append(element('span', cell.address, 'address'));
-        cells.append(box);
-      });
-      row.append(cells);
+      row.append(renderCells(variable, old.get(variable.id), names));
       if (variable.reference || variable.pointer) {
         const cell = variable.cells[0];
         const destinationAddress = variable.reference ? cell.address : cell.value;

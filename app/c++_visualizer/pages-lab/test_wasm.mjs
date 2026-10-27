@@ -60,6 +60,64 @@ try{
     assert.ok(result.steps.some(s=>s.variables.some(v=>v.origin?.kind==='reference')));
     assert.ok(result.steps.some(s=>s.lastCall?.name==='aggiorna'));
   });
+  await test('Matrice: forma, parametri, riferimenti e origine di una cella',async()=>{
+    const result=await run(program('int m[2][3]={{1},{2,3}};f(m);g(m[1][2]);cout<<m[1][2];','void f(int m[][3]){m[1][2]=8;}void g(int &n){n++;}'));
+    assert.equal(result.error,'');assert.equal(last(result).output,'9');
+    const matrix=result.steps.flatMap(s=>s.variables).find(v=>v.name==='m'&&v.array);
+    assert.deepEqual(matrix.dimensions,[2,3]);assert.equal(matrix.cells[5].path,'[1][2]');
+    assert.ok(result.steps.some(s=>s.variables.some(v=>v.name==='n'&&v.origin.sourceIndex===5)));
+  });
+  await test('Matrice richiesta: int a[100][50]',async()=>{
+    const result=await run(program('int a[100][50];a[99][49]=7;cout<<a[99][49];'));
+    assert.equal(result.error,'');assert.equal(last(result).output,'7');
+    const a=result.steps.flatMap(s=>s.variables).find(v=>v.name==='a');
+    assert.equal(a.cells.length,5000);assert.equal(a.cells.at(-1).path,'[99][49]');assert.equal(a.cells[0].initialized,false);
+  });
+  await test('Matrice a una colonna, const e alias di un elemento composto',async()=>{
+    const result=await run(program('int m[2][1]={{1},{2}};m[1][0]=8;P a[2]={{1,2},{3,4}};f(a[1]);cout<<g(m);',
+      'struct P{int x,y;};void f(P &p){p.x++;}int g(const int m[][1]){return m[1][0];}'));
+    assert.equal(result.error,'');assert.equal(last(result).output,'8');
+    assert.ok(result.steps.some(s=>s.variables.some(v=>v.name==='p'&&v.origin.sourceIndex===2)));
+  });
+  await test('Traccia grande: arresto esplicito entro 12 MiB',async()=>{
+    const result=await run(program('int a[100][50]={};int i=0;while(i<100){i++;}'));
+    assert.match(result.error,/Traccia troppo grande/);assert.ok(result.steps.length<100);
+    const global=await run(program('', 'struct P{int a[100];};P p[51];'));
+    assert.match(global.error,/5.000 celle/);
+  });
+  await test('Struct annidate, campi array, copie, riferimenti, puntatori e ritorni',async()=>{
+    const result=await run(program('S s;s.p.x=2;s.a[1]=8;s.name="Ada";P a[2]={{1,2},{3,4}};P b=a[1];f(b,a[0],&a[1]);b=make();cout<<s.name<<s.p.x<<s.a[1]<<a[0].x<<a[1].y<<b.x;',
+      'struct P{int x;int y=7;};struct S{P p;int a[2];string name;};void f(P v,P &r,P *p){v.x=99;r.x=5;p->y=8;}P make(){P p{6,7};return p;}'));
+    assert.equal(result.error,'');assert.equal(last(result).output,'Ada28586');
+    const s=result.steps.flatMap(s=>s.variables).find(v=>v.name==='s');
+    assert.deepEqual(s.cells.map(c=>c.path),['.p.x','.p.y','.a[0]','.a[1]','.name']);
+    assert.equal(s.cells[0].initialized,false);assert.equal(s.cells[1].value,7);assert.equal(s.cells[4].value,'');
+  });
+  for(const standard of ['20','23'])await test('Struct con designatori C++'+standard,async()=>{
+    const result=await run(program('P p{.y=9};cout<<p.x<<p.y;','struct P{int x,y;};'),'',standard);
+    assert.equal(result.error,'');assert.equal(last(result).output,'09');
+  });
+  await test('Input manuale in campi struct e matrice',async()=>{
+    let result=await run(program('P p;int m[2][3];cin>>p.x>>m[1][2];cout<<p.x+m[1][2];','struct P{int x;};'),'', '17',{manual:true});
+    const id=result.session;
+    assert.equal(last(result).inputRequest.target,'p.x');
+    result=await call('/api/input',{session:id,request:last(result).inputRequest.number,value:'4'});
+    assert.equal(last(result).inputRequest.target,'m[1][2]');
+    result=await call('/api/input',{session:id,request:last(result).inputRequest.number,value:'6'});
+    assert.equal(result.error,'');assert.equal(last(result).output,'10');
+  });
+  for(const [body,decl,message] of [
+    ['int m[2][3]={};cout<<m[0][3];','',/fuori dai limiti/],
+    ['int m[2][3]={};f(m);','void f(int m[][3]){m[2][0]=1;}',/fuori dai limiti/],
+    ['int m[2][1]={};cout<<m[0][1];','',/fuori dai limiti/],
+    ['int m[2][3];m[0][0]=1;cout<<m[1][0];','',/non inizializzata/],
+    ['P p;p.x=2;cout<<p.y;','struct P{int x,y;};',/non inizializzata/],
+    ['P p;P q=p;','struct P{int x,y;};',/non inizializzata/],
+    ['P p;P q{};q=p;','struct P{int x,y;};',/non inizializzata/],
+    ['P *p=nullptr;cout<<p->x;','struct P{int x;};',/nullptr/]
+  ])await test('Controllo aggregati: '+body,async()=>{
+    assert.match((await run(program(body,decl))).error,message);
+  });
   await test('Input manuali, correzione, prefisso traccia e richieste scadute',async()=>{
     let result=await run(program('int b,h;cin>>b>>h;cout<<b*h;'),'', '20',{manual:true});
     const id=result.session, prefix=result.steps;
@@ -75,7 +133,8 @@ try{
   const expectedExamples=[
     'Dopo il passaggio per valore: 5 10\nDopo il passaggio per riferimento: 10 5\n',
     'Somma: 15\n2 4 6 8 10 ', 'Mario Rossi ha 17 anni.\n',
-    'Locale: 100\nGlobale: 2\n', 'Fattoriale: 24\n', 'Numero: 11\nSecondo voto: 8\n'
+    'Locale: 100\nGlobale: 2\n', 'Fattoriale: 24\n', 'Numero: 11\nSecondo voto: 8\n',
+    '9\n', 'Ada 18\nAda 17 10\n'
   ];
   const examples=JSON.parse(await readFile(new URL('../examples.json',import.meta.url)));
   for(const [index,example] of examples.entries())await test('Esempio: '+example.title,async()=>{
@@ -140,12 +199,24 @@ try{
     const generated=C.generate(document), result=await run(generated.code,'','20',{flow:generated.flow});
     assert.equal(result.error,'');assert.equal(last(result).output,'5');
   });
+  await test('Matrici eseguibili in C++ ma non convertite parzialmente in Flowchart',()=>
+    assert.rejects(call('/api/import-flowchart',{code:'int main(){int m[2][3]={};m[1][2]=4;}',standard:'17'}),/matrici/));
   await test('Flowchart: tipi espliciti e area',async()=>{
     const generated=C.generate(C.example());
     const resolved=await call('/api/flowchart-source',{code:generated.code,standard:'23'});
     assert.ok(!resolved.code.includes('std::decay_t'));assert.ok(!resolved.code.includes('return 0;'));
     const result=await run(resolved.code,'4 6','23',{flow:generated.flow});
     assert.equal(result.error,'');assert.equal(last(result).output,'Inserisci base: Inserisci altezza: Area: 24\n');
+  });
+  await test('Flowchart: stringa non ancora creata resta non inizializzata',async()=>{
+    const doc=C.blank();
+    const branch=Object.assign(C.newNode('if'),{condition:'false'});
+    branch.then=[Object.assign(C.newNode('assign'),{expression:'nome = "Ada"'})];
+    doc.functions[0].body=[branch,Object.assign(C.newNode('output'),{expression:'nome'})];
+    const generated=C.generate(doc);
+    const resolved=await call('/api/flowchart-source',{code:generated.code,standard:'17'});
+    const result=await run(resolved.code,'','17',{flow:generated.flow});
+    assert.match(result.error,/inizializzat/);
   });
   await test('Metadati flowchart non validi rifiutati',()=>assert.rejects(run('int main(){}','','17',{flow:{deferred:[{line:true}]}}),/Metadati|Dichiarazione/));
   console.log('WASM:',passed,'prove superate');

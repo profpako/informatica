@@ -105,9 +105,11 @@ class FlowchartEngineTests(unittest.TestCase):
 
     def test_uncreated_string_cannot_be_read(self):
         generated = self.fixture['hiddenString']
-        result = run_program(generated['code'], flow=generated['flow'])
-        self.assertIn('inizializzat', result['error'])
-        self.assertFalse(any(v['name']=='testo' for s in result['steps'] for v in s['variables']))
+        for expression in ('testo', 'testo.size()'):
+            with self.subTest(expression=expression):
+                result = run_program(generated['code'].replace('cout << testo', 'cout << ' + expression), flow=generated['flow'])
+                self.assertIn('inizializzat', result['error'])
+                self.assertFalse(any(v['name']=='testo' for s in result['steps'] for v in s['variables']))
 
     def test_scoped_string_passed_by_reference_keeps_the_same_cell(self):
         generated = self.fixture['stringReference']

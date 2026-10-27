@@ -38,12 +38,26 @@ inline std::string address(const void *p) {
     s << "0x" << std::hex << reinterpret_cast<std::uintptr_t>(p);
     return s.str();
 }
+template<class T> struct TypeTag {};
 template<class T> std::string value(const T &v) {
     using V = std::remove_cv_t<T>;
     if constexpr (std::is_same_v<V, std::string>) return quote(v.substr(0, 2000));
     else if constexpr (std::is_same_v<V, char>) return quote(std::string(1, v));
     else if constexpr (std::is_same_v<V, bool>) return v ? "true" : "false";
     else if constexpr (std::is_pointer_v<V>) return quote(address(v));
+    else if constexpr (std::is_array_v<V>) {
+        std::string result = "[";
+        for (std::size_t i = 0; i < std::extent_v<V>; ++i) result += (i ? "," : "") + value(v[i]);
+        return result + "]";
+    }
+    else if constexpr (std::is_class_v<V>) {
+        std::string result = "{";
+        __cv_fields(TypeTag<V>{}, v, [&](const char *name, const char *, const auto &field, bool) {
+            if (result.size() > 1) result += ',';
+            result += quote(name + 1) + ":" + value(field);
+        });
+        return result + "}";
+    }
     else {
         if constexpr (std::is_floating_point_v<V>)
             if (!std::isfinite(v)) return quote(std::isnan(v) ? "NaN" : (v > 0 ? "+infinito" : "-infinito"));
@@ -52,15 +66,25 @@ template<class T> std::string value(const T &v) {
         return s.str();
     }
 }
+struct Cell {
+    std::uintptr_t addr;
+    std::size_t size;
+    std::string path, type;
+    bool initialized, pointer;
+    std::function<std::string()> read;
+};
+template<class T> const void *type_key() { static const char key = 0; return &key; }
+struct ArrayRegion { std::uintptr_t addr; std::size_t size, count; const void *elementType; };
 struct Entry {
     int id, frame, declaration;
     bool parameter, active;
     std::string name, type;
     std::uintptr_t addr;
-    std::size_t size, count;
+    std::size_t size;
     bool reference, pointer, array;
-    std::vector<bool> initialized;
-    std::function<std::string(std::size_t)> read;
+    std::vector<Cell> cells;
+    std::vector<ArrayRegion> arrays;
+    std::vector<std::size_t> dimensions;
 };
 struct Call { int id; std::string name; int line, site, caller; };
 struct PendingCall { int site = 0, caller = 0; };
@@ -83,7 +107,7 @@ public:
     void reset(std::string text) { data = std::move(text); setg(data.data(), data.data(), data.data() + data.size()); }
     void append(const std::string &text) { auto offset = position(); data += text; setg(data.data(), data.data() + offset, data.data() + data.size()); }
     bool available() const { return gptr() != egptr(); }
-    std::size_t position() const { return gptr() - data.data(); }
+    std::size_t position() const { return gptr() ? gptr() - data.data() : 0; }
     std::string consumed(std::size_t start, bool formatted, bool failed) const {
         auto end = position();
         if (failed) while (end < data.size() && data[end] != '\n') ++end;
@@ -101,6 +125,7 @@ struct State {
     std::ostringstream console;
     TerminalInput input;
     std::string terminal;
+    std::size_t traceBytes = 0;
     std::size_t echoedOutput = 0;
     std::size_t inputStart = 0;
     int inputDepth = 0;
@@ -135,57 +160,74 @@ inline void echo_input(const std::string &text) {
 inline void snapshot(int line, const std::string &event, const std::string &error = "") {
     auto &s = state();
     if (line) s.line = line;
-    s.trace << "{\"line\":" << s.line << ",\"event\":" << quote(event)
+    std::ostringstream trace;
+    trace << "{\"line\":" << s.line << ",\"event\":" << quote(event)
         << ",\"output\":" << quote(s.console.str().substr(0, 20000))
         << ",\"console\":" << quote((s.terminal + s.console.str().substr(s.echoedOutput)).substr(0, 30000))
         << ",\"returnValue\":" << quote(s.returned) << ",\"inputConsumed\":" << s.input.pubseekoff(0, std::ios::cur, std::ios::in)
         << ",\"error\":" << quote(error) << ",\"frames\":[";
     bool first = true;
     for (const auto &c : s.calls) {
-        if (!first) s.trace << ',';
+        if (!first) trace << ',';
         first = false;
-        s.trace << "{\"id\":" << c.id << ",\"name\":" << quote(c.name)
+        trace << "{\"id\":" << c.id << ",\"name\":" << quote(c.name)
                 << ",\"site\":" << c.site << ",\"caller\":" << c.caller << '}';
     }
-    s.trace << "],\"variables\":[";
+    trace << "],\"variables\":[";
     first = true;
     for (const auto *e : s.entries) {
         if (!e->active) continue;
-        if (!first) s.trace << ',';
+        if (!first) trace << ',';
         first = false;
-        s.trace << "{\"id\":" << e->id << ",\"frame\":" << e->frame
+        trace << "{\"id\":" << e->id << ",\"frame\":" << e->frame
             << ",\"declaration\":" << e->declaration << ",\"parameter\":" << (e->parameter ? "true" : "false")
             << ",\"name\":" << quote(e->name) << ",\"type\":" << quote(e->type)
             << ",\"reference\":" << (e->reference ? "true" : "false")
             << ",\"pointer\":" << (e->pointer ? "true" : "false")
-            << ",\"array\":" << (e->array ? "true" : "false") << ",\"cells\":[";
-        for (std::size_t i = 0; i < e->count; ++i) {
-            if (i) s.trace << ',';
-            s.trace << "{\"address\":" << quote(address(reinterpret_cast<void *>(e->addr + i * e->size)))
-                << ",\"initialized\":" << (e->initialized[i] ? "true" : "false")
-                << ",\"value\":" << (e->initialized[i] ? e->read(i) : "null") << '}';
+            << ",\"array\":" << (e->array ? "true" : "false") << ",\"dimensions\":[";
+        for (std::size_t i = 0; i < e->dimensions.size(); ++i) {
+            if (i) trace << ',';
+            trace << e->dimensions[i];
         }
-        s.trace << "]}";
+        trace << "],\"cells\":[";
+        for (std::size_t i = 0; i < e->cells.size(); ++i) {
+            if (i) trace << ',';
+            const auto &c = e->cells[i];
+            trace << "{\"address\":" << quote(address(reinterpret_cast<void *>(c.addr)))
+                << ",\"path\":" << quote(c.path) << ",\"type\":" << quote(c.type)
+                << ",\"pointer\":" << (c.pointer ? "true" : "false")
+                << ",\"initialized\":" << (c.initialized ? "true" : "false")
+                << ",\"value\":" << (c.initialized ? c.read() : "null") << '}';
+        }
+        trace << "]}";
     }
-    s.trace << "],\"condition\":";
+    trace << "],\"condition\":";
     if (s.shownCondition) {
         const auto &c = *s.shownCondition;
-        s.trace << "{\"site\":" << c.site << ",\"frame\":" << c.frame
+        trace << "{\"site\":" << c.site << ",\"frame\":" << c.frame
                 << ",\"result\":" << (c.result ? "true" : "false") << ",\"action\":" << quote(c.action) << ",\"values\":[";
         for (std::size_t i = 0; i < c.values.size(); ++i) {
-            if (i) s.trace << ',';
+            if (i) trace << ',';
             const auto &v = c.values[i];
-            s.trace << "{\"begin\":" << v.begin << ",\"end\":" << v.end << ",\"text\":" << quote(v.text) << '}';
+            trace << "{\"begin\":" << v.begin << ",\"end\":" << v.end << ",\"text\":" << quote(v.text) << '}';
         }
-        s.trace << "]}";
-    } else s.trace << "null";
-    s.trace << ",\"inputRequest\":";
+        trace << "]}";
+    } else trace << "null";
+    trace << ",\"inputRequest\":";
     if (s.waiting && event == "attesa input")
-        s.trace << "{\"number\":" << s.inputRequest << ",\"target\":" << quote(s.inputName)
+        trace << "{\"number\":" << s.inputRequest << ",\"target\":" << quote(s.inputName)
                 << ",\"type\":" << quote(s.inputType) << ",\"formatted\":" << (s.inputFormatted ? "true" : "false")
                 << ",\"error\":" << quote(s.inputError) << '}';
-    else s.trace << "null";
-    s.trace << "}\n";
+    else trace << "null";
+    trace << "}\n";
+    auto record = trace.str();
+    if (s.traceBytes + record.size() > 12 * 1024 * 1024 - 512 * 1024) {
+        s.trace << "{\"line\":" << s.line << ",\"event\":\"errore\",\"error\":\"Traccia troppo grande: limite di 12 MiB. Riduci celle o iterazioni.\",\"variables\":[],\"frames\":[],\"output\":" << quote(s.console.str().substr(0, 20000)) << ",\"console\":" << quote((s.terminal + s.console.str().substr(s.echoedOutput)).substr(0, 30000)) << ",\"inputConsumed\":" << s.input.position() << "}\n";
+        s.trace.flush();
+        std::_Exit(2);
+    }
+    s.traceBytes += record.size();
+    s.trace << record;
     s.trace.flush();
     ++s.steps;
 }
@@ -198,35 +240,62 @@ inline void step(int line, const std::string &event = "prima") {
     if (state().console.str().size() > 20000) fail("Output troppo lungo: limite di 20.000 caratteri.", line);
     snapshot(line, event);
 }
-inline bool initialized(std::uintptr_t addr) {
+inline bool initialized(std::uintptr_t addr, std::size_t size) {
     for (auto *e : state().entries)
-        if (addr >= e->addr && addr < e->addr + e->size * e->count && (addr - e->addr) % e->size == 0)
-            return e->initialized[(addr - e->addr) / e->size];
+        for (const auto &c : e->cells)
+            if (c.addr >= addr && c.addr + c.size <= addr + size && !c.initialized) return false;
     return true; // Temporanei e costanti non registrati sono inizializzati dal C++.
 }
-inline void mark(const void *p) {
+template<class T> void mark(const T *p) {
     auto addr = reinterpret_cast<std::uintptr_t>(p);
     for (auto *e : state().entries)
-        if (addr >= e->addr && addr < e->addr + e->size * e->count && (addr - e->addr) % e->size == 0)
-            { e->initialized[(addr - e->addr) / e->size] = true; e->active = true; }
+        for (auto &c : e->cells)
+            if (c.addr >= addr && c.addr + c.size <= addr + sizeof(T)) { c.initialized = true; e->active = true; }
 }
 inline void activate(const void *p, bool defaultInitialized = false) {
     auto addr = reinterpret_cast<std::uintptr_t>(p);
     for (auto *e : state().entries) if (e->addr == addr) {
         e->active = true;
-        if (defaultInitialized) std::fill(e->initialized.begin(), e->initialized.end(), true);
+        if (defaultInitialized) for (auto &c : e->cells) c.initialized = true;
+    }
+}
+template<class T> void collect(Entry &entry, T &object, const std::string &path, const std::string &type, bool init) {
+    using V = std::remove_cv_t<T>;
+    if constexpr (std::is_array_v<T>) {
+        constexpr auto n = std::extent_v<T>;
+        entry.arrays.push_back({reinterpret_cast<std::uintptr_t>(&object), sizeof(object[0]), n, type_key<std::remove_cv_t<std::remove_extent_t<T>>>()});
+        auto elementType = type;
+        auto bracket = elementType.find('[');
+        if (bracket != std::string::npos) elementType.erase(bracket, elementType.find(']', bracket) - bracket + 1);
+        for (std::size_t i = 0; i < n; ++i) collect(entry, object[i], path + "[" + std::to_string(i) + "]", elementType, init);
+    } else if constexpr (std::is_class_v<V> && !std::is_same_v<V, std::string>) {
+        __cv_fields(TypeTag<V>{}, object, [&](const char *name, const char *fieldType, auto &field, bool defaultInit) {
+            collect(entry, field, path + name, fieldType, init || defaultInit);
+        });
+    } else {
+        auto addr = reinterpret_cast<std::uintptr_t>(&object);
+        bool ready = entry.reference ? initialized(addr, sizeof(T)) : init || (entry.active && std::is_same_v<V, std::string>);
+        entry.cells.push_back({addr, sizeof(T), path, type, ready, std::is_pointer_v<T>, [p = &object] { return value(*p); }});
+        if (entry.cells.size() > 5000) fail("Limite di 5.000 celle per variabile composta.");
     }
 }
 struct Watch {
     Entry entry;
-    Watch(std::string name, std::string type, std::uintptr_t addr, std::size_t size,
-          std::size_t count, bool init, bool reference, bool pointer, bool array,
-          std::function<std::string(std::size_t)> reader, bool persistent, int declaration, bool parameter, bool active) :
+    template<class T> Watch(std::string name, std::string type, T &object, bool init, bool reference,
+          bool persistent, int declaration, bool parameter, bool active) :
         entry{state().next++, persistent || state().calls.empty() ? 0 : state().calls.back().id,
               declaration, parameter, active,
-              name, type, addr, size, count, reference, pointer, array,
-              std::vector<bool>(count, init), reader} {
-        if (reference) for (std::size_t i = 0; i < count; ++i) entry.initialized[i] = initialized(addr + i * size);
+              name, type, reinterpret_cast<std::uintptr_t>(&object), sizeof(T), reference, std::is_pointer_v<T>, std::is_array_v<T>, {}, {}, {}} {
+        if constexpr (std::is_array_v<T>) {
+            entry.dimensions.push_back(std::extent_v<T>);
+            if constexpr (std::rank_v<T> == 2) entry.dimensions.push_back(std::extent_v<T, 1>);
+        }
+        auto cellType = type;
+        for (const auto &modifier : {std::string(" (&)"), std::string(" &")}) {
+            auto pos = cellType.find(modifier);
+            if (pos != std::string::npos) cellType.erase(pos, modifier.size());
+        }
+        collect(entry, object, "", cellType, init);
         state().entries.push_back(&entry);
     }
     Watch(const Watch &) = delete;
@@ -236,13 +305,7 @@ struct Watch {
     }
 };
 template<class T> Watch watch(const char *name, const char *type, T &object, bool init, bool reference, bool persistent, int declaration, bool parameter, bool active = true) {
-    if constexpr (std::is_array_v<T>) {
-        constexpr auto n = std::extent_v<T>;
-        if (n > 100) fail("Gli array possono avere al massimo 100 elementi.");
-        return Watch(name, type, reinterpret_cast<std::uintptr_t>(&object), sizeof(object[0]), n,
-            init, reference, false, true, [p = &object](std::size_t i) { return value((*p)[i]); }, persistent, declaration, parameter, active);
-    } else return Watch(name, type, reinterpret_cast<std::uintptr_t>(&object), sizeof(T), 1,
-        init, reference, std::is_pointer_v<T>, false, [p = &object](std::size_t) { return value(*p); }, persistent, declaration, parameter, active);
+    return Watch(name, type, object, init, reference, persistent, declaration, parameter, active);
 }
 struct Frame {
     int line;
@@ -266,14 +329,14 @@ template<class F> decltype(auto) invoke(int site, F call) {
     return call();
 }
 template<class T> T read(const T &v, int line, int begin = -1, int end = -1) {
-    if (!initialized(reinterpret_cast<std::uintptr_t>(&v))) fail("Lettura di una variabile non inizializzata.", line);
+    if (!initialized(reinterpret_cast<std::uintptr_t>(&v), sizeof(T))) fail("Lettura di una variabile non inizializzata.", line);
     capture_condition(v, begin, end);
     return v;
 }
-template<class T> T &checked(T &v, int line, int begin = -1, int end = -1) {
-    if (!initialized(reinterpret_cast<std::uintptr_t>(&v))) fail("Lettura di una variabile non inizializzata.", line);
+template<class T> decltype(auto) checked(T &&v, int line, int begin = -1, int end = -1) {
+    if (!initialized(reinterpret_cast<std::uintptr_t>(&v), sizeof(T))) fail("Lettura di una variabile non inizializzata.", line);
     capture_condition(v, begin, end);
-    return v;
+    return std::forward<T>(v);
 }
 template<class R, class L> decltype(auto) assign(R rhs, L lhs) {
     auto val = rhs();
@@ -306,20 +369,25 @@ template<class T> T &pre(T &target, int delta, int line, int begin = -1, int end
 }
 template<class T> T &at(T *base, long long index, int line) {
     auto addr = reinterpret_cast<std::uintptr_t>(base);
+    const ArrayRegion *region = nullptr;
+    std::string name;
     for (auto *e : state().entries) {
-        if (e->array && addr >= e->addr && addr < e->addr + e->count * e->size) {
-            auto start = (addr - e->addr) / e->size;
-            if (index < 0 || static_cast<unsigned long long>(index) >= e->count - start)
-                fail("Indice " + std::to_string(index) + " fuori dai limiti dell'array " + e->name + ".", line);
-            return base[index];
+        for (const auto &a : e->arrays) if (a.elementType == type_key<std::remove_cv_t<T>>() && addr >= a.addr && addr < a.addr + a.count * a.size && (addr - a.addr) % a.size == 0) {
+            if (!region || a.count < region->count) { region = &a; name = e->name; }
         }
+    }
+    if (region) {
+        auto start = (addr - region->addr) / region->size;
+        if (index < 0 || static_cast<unsigned long long>(index) >= region->count - start)
+            fail("Indice " + std::to_string(index) + " fuori dai limiti dell'array " + name + ".", line);
+        return base[index];
     }
     fail("Il puntatore non individua un array attivo.", line);
 }
 template<class T> T *pointer(T *p, int line) {
     auto addr = reinterpret_cast<std::uintptr_t>(p);
     for (auto *e : state().entries)
-        if (!e->reference && addr >= e->addr && addr < e->addr + e->count * e->size && (addr - e->addr) % e->size == 0)
+        if (!e->reference && addr >= e->addr && addr + sizeof(T) <= e->addr + e->size)
             return p;
     fail(p ? "Il puntatore non individua una variabile attiva." : "Dereferenziazione di nullptr.", line);
 }

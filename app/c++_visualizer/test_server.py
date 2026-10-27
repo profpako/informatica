@@ -39,7 +39,7 @@ class ServerTests(unittest.TestCase):
         self.assertIn("img-src 'self' blob:", headers['Content-Security-Policy'])
         status, body, _ = self.request('GET', '/api/config')
         self.assertEqual(status, 200)
-        self.assertEqual(len(json.loads(body)['examples']), 6)
+        self.assertEqual(len(json.loads(body)['examples']), 8)
         self.assertEqual(json.loads(body)['standards'], ['17', '20', '23'])
         for path in ['/flowchart-core.js', '/flowchart-editor.js', '/flowchart.css', '/program-files.js', '/transport.js']:
             self.assertEqual(self.request('GET', path)[0], 200)

@@ -98,6 +98,13 @@ Gli aggiornamenti richiedono un push su main: una modifica non pubblicata sul PC
 non cambia il sito. Le parti comuni sono uniche; gli adattatori di esecuzione
 sono distinti per le capacità differenti di macOS e del browser.
 
+L'estensione C++ per matrici e struct riusa gli stessi file condivisi: griglia
+bidimensionale, campi annidati, array di struct, copie e alias sono disponibili
+anche nel runtime WASM. I casi aggiunti a `test_wasm.mjs` includono `int a[100][50];`,
+input manuali nei campi e nelle matrici, designatori C++20/23, controllo dei due
+indici, campi non inizializzati e limite di 12 MiB della traccia.
+Il piano e i limiti sono in [PIANO_CPP_AGGREGATI.md](../PIANO_CPP_AGGREGATI.md).
+
 Verifica su Pages del 23 ottobre 2026: pipeline build/deploy verde; input manuali
 4 e 6 con eco su righe separate, funzione area 24, procedura perimetro 20 e
 archivio delle due chiamate. Vecchio URL verificato con rinvio automatico al

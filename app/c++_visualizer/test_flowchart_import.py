@@ -75,6 +75,8 @@ int main(){int n=doppio(3);if(n<0)cout<<"no";else cout<<n<<endl;return 0;}'''
 
     def test_rejections_keep_clear_diagnostics(self):
         sources = ['int g=1;int main(){}', 'int main(){static int x=0;}',
+                   'int main(){int m[2][3]={};m[1][2]=4;}',
+                   'struct P{int x;};int main(){P p{};}',
                    'int main(){int n=1;switch(n){case 1:break;}}',
                    'int f(int n=1){return n;}int main(){}',
                    'int f(int n){return n;}double f(double n){return n;}int main(){}',
