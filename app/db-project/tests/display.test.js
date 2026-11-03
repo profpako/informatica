@@ -3,6 +3,79 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const ER = require('../model.js');
 
+test('composti: nome dentro un ovale, collegamenti al bordo, chiavi e ingombri', () => {
+  const model = ER.parse(`ENTITA: Persona
+- id
+- indirizzo [0,1]
+  - via
+  - civico
+  - città
+- posizione [ID]
+  - zona
+  - coordinate
+    - x
+    - y`);
+  const node = model.entities[0];
+  const before = ER.serialize(model);
+  for (const side of ['top', 'bottom', 'left', 'right']) for (const size of [8, 17, 40]) {
+    node.side = side;
+    node.attributePositions = { '1': { x: -300, y: -180 } };
+    const display = { fontSizes: { attributes: size } }, fonts = ER.displayOptions(display).fontSizes;
+    const { markup } = ER.render(model, '', display), bounds = ER.nodeBounds(node, fonts);
+    const groups = new Map([...markup.matchAll(/<g class="attribute"[^>]*data-attribute="([^"]+)"[^>]*>(.*?)<\/g>/g)].map(([, path, content]) => [path, content]));
+    const lines = [...markup.matchAll(/<line class="attribute-line" x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"/g)].map(m => m.slice(1).map(Number));
+    const entries = ER.attributeEntries(node.attributes);
+    const onBorder = (x, y, p, rx, ry) => assert.ok(Math.abs(((x - p.x) / rx) ** 2 + ((y - p.y) / ry) ** 2 - 1) < 1e-8, 'Connection ends on the ellipse border');
+    entries.forEach(({ attr, path }, index) => {
+      const group = groups.get(path);
+      if (!attr.children) { assert.match(group, /<circle class="attribute-dot/); return; }
+      assert.doesNotMatch(group, /<circle class="attribute-dot/);
+      const [rx, ry] = group.match(/<ellipse class="attribute-dot attribute-composite[^"<]*"[^>]*rx="([^"]+)" ry="([^"]+)"/).slice(1).map(Number);
+      const p = ER.attributePosition(node, path, fonts), label = attr.name + (attr.cardinality === '1,1' ? '' : ` (${attr.cardinality})`);
+      assert.ok(group.includes(`<text class="attribute-label" x="${p.x}" y="${p.y + size * .3}" text-anchor="middle">${label}</text>`));
+      assert.ok(p.x - rx >= bounds.left && p.x + rx <= bounds.right && p.y - ry >= bounds.top && p.y + ry <= bounds.bottom);
+      onBorder(lines[index][2], lines[index][3], p, rx, ry);
+      entries.forEach((child, i) => { if (child.parent === path) onBorder(lines[i][0], lines[i][1], p, rx, ry); });
+    });
+    assert.match(groups.get('2'), /attribute-composite key/);
+    assert.match(groups.get('2.1.0'), /attribute-dot key/);
+    assert.match(ER.svg(model, display), /\.attribute-composite.key\{fill:#fff\}/);
+    assert.doesNotMatch(markup, /NaN|undefined/);
+  }
+  assert.equal(ER.serialize(model), before);
+});
+
+test('identificatore composto: componenti vuote e un unico pallino pieno sul tratto trasversale', () => {
+  const model = ER.parse('ENTITA: Iscrizione\n- studente [ID]\n- corso [PK]\n- anno [ID]\n- data');
+  const node = model.entities[0], original = ER.serialize(model);
+  for (const side of ['top', 'bottom', 'left', 'right']) for (const size of [8, 17, 40]) {
+    node.side = side;
+    const display = { fontSizes: { attributes: size } }, fonts = ER.displayOptions(display).fontSizes;
+    for (const mixed of [false, true]) {
+      node.attributeSides = mixed ? { '0': 'top', '1': 'right', '2': 'bottom' } : {};
+      node.attributePositions = mixed ? { '1': { x: 300, y: 90 } } : {};
+      const { markup } = ER.render(model, '', display), box = ER.nodeBounds(node, fonts);
+      const [, group] = markup.match(/<g class="composite-identifier"[^>]*>(.*?)<\/g>/);
+      const points = group.match(/points="([^"]+)"/)[1].split(' ').map(pair => { const [x, y] = pair.split(',').map(Number); return { x, y }; });
+      assert.ok(Math.abs(Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y) - 18) < 1e-8, 'The bar extends beyond the first attribute line');
+      assert.ok(Math.abs(Math.hypot(points.at(-1).x - points.at(-2).x, points.at(-1).y - points.at(-2).y) - 18) < 1e-8, 'The filled endpoint extends beyond the last attribute line');
+      assert.equal((markup.match(/class="attribute-dot key"/g) || []).length, 1);
+      assert.equal((markup.match(/class="attribute-dot"/g) || []).length, 4);
+      assert.match(markup, /aria-label="Identificatore composto: studente \+ corso \+ anno"/);
+      const lines = [...markup.matchAll(/<line class="attribute-line" x1="([^"]+)" y1="([^"]+)" x2="([^"]+)" y2="([^"]+)"/g)].map(m => m.slice(1).map(Number));
+      lines.slice(0, 3).forEach(([x1, y1, x2, y2]) => assert.ok(points.some(p => Math.abs(p.x - (x1 + (x2 - x1) * .55)) < 1e-8 && Math.abs(p.y - (y1 + (y2 - y1) * .55)) < 1e-8), 'The transverse line crosses each key attribute line'));
+      points.forEach(p => assert.ok(p.x - 5 >= box.left && p.x + 5 <= box.right && p.y - 5 >= box.top && p.y + 5 <= box.bottom));
+      const dot = points.at(-1);
+      assert.ok(group.includes(`cx="${dot.x}" cy="${dot.y}"`));
+      assert.match(ER.svg(model, display), /composite-identifier/);
+    }
+  }
+  assert.equal(ER.serialize(model), original);
+  const simple = ER.parse('ENTITA: Persona\n- id [ID]\n- nome');
+  assert.doesNotMatch(ER.render(simple).markup, /composite-identifier/);
+  assert.equal((ER.render(simple).markup.match(/class="attribute-dot key"/g) || []).length, 1);
+});
+
 test('preferenze ER: inversione solo grafica, ricorsione, riquadri ed esportazione', () => {
   const model = ER.parse(`ENTITA: Cliente
 - id [ID]

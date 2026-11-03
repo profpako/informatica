@@ -126,9 +126,9 @@ ASSOCIAZIONE: frequenta: Studente [0,N] -> Corso [0,N]
 - data_iscrizione
 ```
 
-Un’associazione può avere attributi. Più attributi `[ID]` o `[PK]` nella stessa entità formano un identificatore composto. Sono accettate le cardinalità `[0,1]`, `[1,1]`, `[0,N]` e `[1,N]`, anche per gli attributi.
+Un’associazione può avere attributi. Più attributi `[ID]` o `[PK]` nella stessa entità formano un identificatore composto: i loro pallini restano vuoti e un tratto trasversale attraversa le linee, terminando con un unico pallino pieno. Sono accettate le cardinalità `[0,1]`, `[1,1]`, `[0,N]` e `[1,N]`, anche per gli attributi.
 
-La sintassi è specifica di Trama, non uno standard ER. Un attributo composto usa due spazi di rientro per livello, nei moduli e nella descrizione completa:
+La sintassi è specifica di Trama, non uno standard ER. Un attributo composto usa due spazi di rientro per livello, nei moduli e nella descrizione completa. Nel diagramma il nome del composto compare dentro un ovale, con le componenti collegate al suo bordo:
 
 ```text
 ENTITA: Persona
@@ -147,7 +147,7 @@ ENTITA: Docente
 GERARCHIA: Persona [PARZIALE, ESCLUSIVA, PADRE] -> Studente, Docente
 ```
 
-Le alternative sono `TOTALE`/`PARZIALE`, `ESCLUSIVA`/`SOVRAPPOSTA` e `PADRE`/`FIGLIE`/`SEPARATE`. `FIGLIE` richiede una gerarchia totale; `SEPARATE` è la strategia predefinita e sostituisce la gerarchia con associazioni ISA e identificazione attraverso il padre. Sono ammesse gerarchie annidate, senza cicli né ereditarietà multipla.
+Le alternative sono `TOTALE`/`PARZIALE`, `ESCLUSIVA`/`SOVRAPPOSTA` e `PADRE`/`FIGLIE`/`SEPARATE`. `FIGLIE` richiede una gerarchia totale; `SEPARATE` è la strategia predefinita e sostituisce la gerarchia con associazioni ISA e identificazione attraverso il padre. Sono ammesse gerarchie annidate, senza cicli né ereditarietà multipla. Le gerarchie totali mostrano un pallino pieno nel punto di diramazione verso le figlie; le parziali non lo mostrano.
 
 Gli identificatori esterni possono essere esplicitati nel testo (o generati dalla ristrutturazione):
 

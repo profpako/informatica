@@ -175,7 +175,7 @@ Il piano principale è piatto: bordi e variazioni di fondo separano le zone. Omb
 
 Controlli con angoli piccoli e regolari; badge e righe hanno curvature più strette, menu e dialogo più ampie. Icone lineari, senza riempimenti decorativi. Nel diagramma, rettangoli per entità, rombi per associazioni e cerchi vuoti/pieni per attributi/identificatori preservano la notazione del PDF.
 
-I composti collegano i sottoattributi al cerchio del gruppo. Le gerarchie usano una freccia triangolare vuota rivolta al padre, collegamenti a gomito e una descrizione testuale di copertura e appartenenza; lo stile del triangolo è incluso nello SVG esportato.
+Gli identificatori con più attributi nella stessa entità usano pallini vuoti alle componenti e un tratto trasversale con un unico pallino pieno; il tratto segue gli spostamenti e resta incluso negli ingombri e nello SVG esportato. I composti mostrano il nome dentro un ovale e collegano i sottoattributi al suo bordo. Le componenti semplici mantengono il cerchio; un singolo composto usato come identificatore ha il nome sottolineato e le componenti piene. Ovali, collegamenti e ingombri seguono le dimensioni del testo anche nello SVG esportato. Le gerarchie usano una freccia triangolare vuota rivolta al padre, collegamenti a gomito e una descrizione testuale di copertura e appartenenza; nelle gerarchie totali un pallino pieno segna il punto di diramazione verso le figlie. Triangolo e pallino sono conservati nello SVG esportato.
 
 ## Components
 

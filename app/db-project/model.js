@@ -450,6 +450,14 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
   }
   // Conservative font estimates also work in Node and for wide/Unicode names.
   const textWidth = (text, size = 17) => [...text].reduce((sum, c) => sum + (/[MW@%]|[^\u0000-\u024f]/u.test(c) ? 18 : /[A-Z]/.test(c) ? 13 : /[mw]/.test(c) ? 15 : 10), 0) * size / 17;
+  const attributeLabel = attr => `${attr.name}${attr.cardinality === '1,1' ? '' : ` (${attr.cardinality})`}`;
+  const compositeSize = (attr, fonts) => ({ rx: textWidth(attributeLabel(attr), fonts.attributes) / 2 + 18, ry: Math.max(20, fonts.attributes * .9 + 6) });
+  function attributeAnchor(attr, point, toward, fonts) {
+    if (!attr.children) return point;
+    const { rx, ry } = compositeSize(attr, fonts), dx = toward.x - point.x, dy = toward.y - point.y;
+    const scale = 1 / (Math.hypot(dx / rx, dy / ry) || 1);
+    return { x: point.x + dx * scale, y: point.y + dy * scale };
+  }
   function anchor(node, toward, relationship, force, fonts = defaultFontSizes) {
     const { w, h } = dimensions(node, relationship, fonts);
     const dx = toward.x - node.x, dy = toward.y - node.y;
@@ -477,13 +485,13 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
     const scale = fonts.attributes / 17, original = dimensions(node, !!node.ends), size = dimensions(node, !!node.ends, fonts);
     const lateral = 175 + Math.max(0, size.w - original.w), vertical = 115 + Math.max(0, size.h - original.h);
     if (node.attributes.some(a => a.children)) {
-      const positions = {}, width = a => Math.max(textWidth(a.name + (a.cardinality === '1,1' ? '' : ` (${a.cardinality})`), fonts.attributes) + 36, (a.children || []).reduce((sum, child) => sum + width(child), 0));
+      const positions = {}, width = a => Math.max(textWidth(attributeLabel(a), fonts.attributes) + 36, (a.children || []).reduce((sum, child) => sum + width(child), 0));
       const entries = attributeEntries(node.attributes), maxDepth = Math.max(...entries.map(e => e.depth));
       const horizontal = node.side === 'left' || node.side === 'right', direction = node.side === 'left' || node.side === 'top' ? -1 : 1;
-      function place(a, path, center, depth, row) {
-        positions[path] = horizontal ? { x: node.x + direction * (lateral + depth * 220 * scale), y: node.y + center } : { x: node.x + center, y: node.y + direction * (vertical + depth * 110 * scale + row * (maxDepth + 2) * 110 * scale) };
+      function place(a, path, center, depth, row, distance = Math.max(lateral, size.w + (a.children ? compositeSize(a, fonts).rx : 5) + 36)) {
+        positions[path] = horizontal ? { x: node.x + direction * distance, y: node.y + center } : { x: node.x + center, y: node.y + direction * (vertical + depth * 110 * scale + row * (maxDepth + 2) * 110 * scale) };
         let cursor = center - (a.children || []).reduce((sum, c) => sum + width(c), 0) / 2;
-        (a.children || []).forEach((c, i) => { const w = width(c); place(c, `${path}.${i}`, cursor + w / 2, depth + 1, row); cursor += w; });
+        (a.children || []).forEach((c, i) => { const w = width(c), gap = Math.max(220 * scale, compositeSize(a, fonts).rx + (c.children ? compositeSize(c, fonts).rx : 5) + 36); place(c, `${path}.${i}`, cursor + w / 2, depth + 1, row, distance + gap); cursor += w; });
       }
       const perRow = horizontal ? node.attributes.length : 7;
       for (let start = 0; start < node.attributes.length; start += perRow) {
@@ -504,16 +512,51 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
     while (current) { if (node.attributeSides?.[current]) return node.attributeSides[current]; current = current.includes('.') ? current.slice(0, current.lastIndexOf('.')) : ''; }
     return node.side;
   }
+  function identifierGroup(node, fonts) {
+    const keys = node.attributes.flatMap((attr, i) => attr.key ? [{ attr, path: String(i) }] : []);
+    if (node.ends || node.externalKey || keys.length < 2) return null;
+    const { w, h } = dimensions(node, false, fonts);
+    const groups = [[], [], [], []];
+    keys.forEach(({ attr, path }) => {
+      const p = attributePosition(node, path, fonts), a = anchor(node, p, false, undefined, fonts), end = attributeAnchor(attr, p, a, fonts);
+      const point = { x: a.x + (end.x - a.x) * .55, y: a.y + (end.y - a.y) * .55 };
+      const dx = point.x - node.x, dy = point.y - node.y;
+      const side = Math.abs(dx) / w > Math.abs(dy) / h ? dx > 0 ? 1 : 3 : dy > 0 ? 2 : 0;
+      groups[side].push(point);
+    });
+    groups.forEach((points, side) => points.sort((a, b) => side % 2 ? (a.y - b.y) * (side === 1 ? 1 : -1) : (a.x - b.x) * (side === 0 ? 1 : -1)));
+    const all = groups.flat(), left = Math.min(node.x - w - 12, ...all.map(p => p.x)), right = Math.max(node.x + w + 12, ...all.map(p => p.x));
+    const top = Math.min(node.y - h - 12, ...all.map(p => p.y)), bottom = Math.max(node.y + h + 12, ...all.map(p => p.y));
+    const corners = [{ x: right, y: top }, { x: right, y: bottom }, { x: left, y: bottom }, { x: left, y: top }];
+    const points = []; let previous;
+    groups.forEach((group, side) => {
+      if (!group.length) return;
+      if (previous !== undefined) for (let turn = previous; turn < side; turn++) points.push(corners[turn]);
+      points.push(...group); previous = side;
+    });
+    const first = points[0], next = points[1], startDx = first.x - next.x, startDy = first.y - next.y, startLength = Math.hypot(startDx, startDy);
+    points.unshift({ x: first.x + (startLength ? startDx / startLength : -1) * 18, y: first.y + (startLength ? startDy / startLength : 0) * 18 });
+    const last = points.at(-1), previousPoint = points.at(-2), dx = last.x - previousPoint.x, dy = last.y - previousPoint.y, length = Math.hypot(dx, dy);
+    points.push({ x: last.x + (length ? dx / length : 1) * 18, y: last.y + (length ? dy / length : 0) * 18 });
+    return { paths: keys.map(k => k.path), points };
+  }
   function nodeBoxes(node, fonts = defaultFontSizes) {
     const { w, h } = dimensions(node, !!node.ends, fonts);
     const boxes = [{ left: node.x - w, right: node.x + w, top: node.y - h, bottom: node.y + h }];
     attributeEntries(node.attributes).forEach(({ attr, path }) => {
-      const p = attributePosition(node, path, fonts), width = textWidth(attr.name + (attr.cardinality === '1,1' ? '' : ` (${attr.cardinality})`), fonts.attributes);
+      const p = attributePosition(node, path, fonts), width = textWidth(attributeLabel(attr), fonts.attributes);
+      if (attr.children) {
+        const { rx, ry } = compositeSize(attr, fonts);
+        boxes.push({ left: p.x - rx, right: p.x + rx, top: p.y - ry, bottom: p.y + ry });
+        return;
+      }
       const side = attributeSide(node, path);
       const left = side === 'left' ? p.x - 12 - width : side === 'right' ? p.x + 12 : p.x - width / 2;
       const baseline = p.y + (side === 'top' ? -14 : side === 'bottom' ? fonts.attributes + 4 : fonts.attributes * 5 / 17);
       boxes.push({ left: Math.min(left, p.x - 5), right: Math.max(left + width, p.x + 5), top: Math.min(baseline - fonts.attributes - 1, p.y - 5), bottom: Math.max(baseline + fonts.attributes * 12 / 17, p.y + 5) });
     });
+    const identifier = identifierGroup(node, fonts);
+    if (identifier) identifier.points.forEach(p => boxes.push({ left: p.x - 5, right: p.x + 5, top: p.y - 5, bottom: p.y + 5 }));
     if (node.externalKey) {
       const label = `ID esterno: ${node.externalKey.attributes.join(' + ')}${node.externalKey.attributes.length ? ' + ' : ''}proprietario`, width = textWidth(label, fonts.notes);
       const baseline = node.y + h + Math.max(30, fonts.notes + 12);
@@ -568,6 +611,7 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
         edges += `<polyline class="connection" points="${junction.x},${junction.y} ${x},${junction.y} ${x},${c.y} ${c.x},${c.y}"/>`;
         bounds.push(junction, c, { x, y: junction.y }, { x, y: c.y });
       });
+      if (h.total) edges += `<circle class="isa-total" cx="${junction.x}" cy="${junction.y}" r="5"/>`;
       const labelBox = { left: lx, right: lx + textWidth(label, fonts.notes), top: ly - fonts.notes * 4 / 3, bottom: ly + fonts.notes * 8 / 15 };
       occupiedLabels.push(labelBox);
       edges += '</g>'; bounds.push(p, { x: junction.x, y: p.y }, { x: labelBox.left, y: labelBox.top }, { x: labelBox.right, y: labelBox.bottom });
@@ -673,14 +717,25 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
       bounds.push({ x: box.left, y: box.top }, { x: box.right, y: box.bottom });
       let attrs = '';
       const entries = attributeEntries(node.attributes);
+      const identifier = identifierGroup(node, fonts);
       entries.forEach(({ attr, path, parent }) => {
-        const p = attributePosition(node, path, fonts), a = parent ? attributePosition(node, parent, fonts) : anchor(node, p, relationship, undefined, fonts);
-        const side = attributeSide(node, path), align = side === 'left' ? 'end' : side === 'right' ? 'start' : 'middle';
-        const tx = p.x + (align === 'end' ? -12 : align === 'start' ? 12 : 0), ty = p.y + (align === 'middle' ? side === 'bottom' ? fonts.attributes + 4 : -14 : fonts.attributes * 5 / 17);
-        const label = `${attr.name}${attr.cardinality === '1,1' ? '' : ` (${attr.cardinality})`}`;
+        const p = attributePosition(node, path, fonts), parentPoint = parent ? attributePosition(node, parent, fonts) : null;
+        const a = parent ? attributeAnchor(entries.find(e => e.path === parent).attr, parentPoint, p, fonts) : anchor(node, p, relationship, undefined, fonts);
+        const end = attributeAnchor(attr, p, parentPoint || a, fonts);
+        const side = attributeSide(node, path), align = attr.children ? 'middle' : side === 'left' ? 'end' : side === 'right' ? 'start' : 'middle';
+        const tx = p.x + (align === 'end' ? -12 : align === 'start' ? 12 : 0), ty = p.y + (attr.children ? fonts.attributes * .3 : align === 'middle' ? side === 'bottom' ? fonts.attributes + 4 : -14 : fonts.attributes * 5 / 17);
+        const label = attributeLabel(attr);
         const inheritedKey = entries.some(e => e.attr.key && (path === e.path || path.startsWith(e.path + '.')));
-        attrs += `<line class="attribute-line" x1="${a.x}" y1="${a.y}" x2="${p.x}" y2="${p.y}"/><g class="attribute" data-node="${node.id}" data-attribute="${path}" tabindex="0" role="button" aria-label="Sposta attributo ${escape(attr.name)}"><circle class="attribute-hit" cx="${p.x}" cy="${p.y}" r="14"/><circle class="attribute-dot${inheritedKey || node.externalKey?.attributes.includes(attr.name) ? ' key' : ''}" cx="${p.x}" cy="${p.y}" r="5"/><text class="attribute-label" x="${tx}" y="${ty}" text-anchor="${align}">${escape(label)}</text></g>`;
+        const grouped = identifier?.paths.some(keyPath => path === keyPath || path.startsWith(keyPath + '.'));
+        const key = (inheritedKey && !grouped) || node.externalKey?.attributes.includes(attr.name) ? ' key' : '';
+        const size = attr.children ? compositeSize(attr, fonts) : null;
+        const dot = size ? `<ellipse class="attribute-dot attribute-composite${key}" cx="${p.x}" cy="${p.y}" rx="${size.rx}" ry="${size.ry}"/>` : `<circle class="attribute-dot${key}" cx="${p.x}" cy="${p.y}" r="5"/>`;
+        attrs += `<line class="attribute-line" x1="${a.x}" y1="${a.y}" x2="${end.x}" y2="${end.y}"/><g class="attribute" data-node="${node.id}" data-attribute="${path}" tabindex="0" role="button" aria-label="Sposta attributo ${escape(attr.name)}"><circle class="attribute-hit" cx="${p.x}" cy="${p.y}" r="14"/>${dot}<text class="attribute-label" x="${tx}" y="${ty}" text-anchor="${align}">${escape(label)}</text></g>`;
       });
+      if (identifier) {
+        const dot = identifier.points.at(-1), label = node.attributes.filter(a => a.key).map(a => a.name).join(' + ');
+        attrs += `<g class="composite-identifier" role="img" aria-label="Identificatore composto: ${escape(label)}"><polyline class="attribute-line" points="${identifier.points.map(p => `${p.x},${p.y}`).join(' ')}"/><circle class="attribute-dot key" cx="${dot.x}" cy="${dot.y}" r="5"/></g>`;
+      }
       if (node.externalKey) shapes += `<text class="role" x="${node.x}" y="${node.y + h + Math.max(30, fonts.notes + 12)}" text-anchor="middle">${escape(`ID esterno: ${node.externalKey.attributes.join(' + ')}${node.externalKey.attributes.length ? ' + ' : ''}proprietario`)}</text>`;
       const shape = relationship ? `<polygon points="${node.x-w},${node.y} ${node.x},${node.y-h} ${node.x+w},${node.y} ${node.x},${node.y+h}"/>` : `<rect x="${node.x-w}" y="${node.y-h}" width="${w*2}" height="${h*2}" rx="2"/>`;
       shapes += attrs + `<g class="diagram-node ${relationship ? 'relationship' : 'entity'}${selected === node.id ? ' selected' : ''}" data-node="${node.id}" tabindex="0" role="button" aria-label="Modifica ${escape(node.name)}">${shape}<text x="${node.x}" y="${node.y + fonts.nodes * .3}" text-anchor="middle">${escape(node.name)}</text></g>`;
@@ -697,7 +752,7 @@ ASSOCIAZIONE: interpreta: Versione [1,N] -> Artista [0,N]` : ''}`);
   }
   function diagramStyle(display = {}) {
     const fonts = displayOptions(display).fontSizes;
-    return svgStyle + `.diagram-node text{font-size:${fonts.nodes}px}.attribute-label{font-size:${fonts.attributes}px}.cardinality{font-size:${fonts.cardinalities}px}.role{font-size:${fonts.notes}px}.relationship-type text{font-size:${fonts.badges}px}`;
+    return svgStyle + `.isa-total{fill:#203532}.attribute-composite.key{fill:#fff}.attribute-composite.key~.attribute-label{text-decoration:underline}.diagram-node text{font-size:${fonts.nodes}px}.attribute-label{font-size:${fonts.attributes}px}.cardinality{font-size:${fonts.cardinalities}px}.role{font-size:${fonts.notes}px}.relationship-type text{font-size:${fonts.badges}px}`;
   }
   const api = { cards, uid, copy, escape, attributes, attributeText, attributeEntries, validate, parse, serialize, layout, example, render, svg, svgStyle, diagramStyle, displayOptions, attributePosition, attributeSide, nodeBounds };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

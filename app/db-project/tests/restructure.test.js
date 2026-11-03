@@ -20,6 +20,26 @@ ASSOCIAZIONE: frequenta: Studente [1,N] -> Corso [0,N]
 ASSOCIAZIONE: coordina: Persona [0,N] -> Corso [1,1]
 GERARCHIA: Persona [TOTALE, ESCLUSIVA, SEPARATE] -> Studente, Docente`;
 
+test('gerarchia totale: pallino pieno nel punto di diramazione, anche con uscita laterale', () => {
+  const model = ER.parse(hierarchy), parent = model.entities[0];
+  const original = ER.serialize(model);
+  for (const side of ['top', 'bottom']) for (const total of [false, true]) for (const disjoint of [false, true]) {
+    parent.side = side;
+    Object.assign(model.hierarchies[0], { total, disjoint });
+    const { markup } = ER.render(model);
+    const paths = [...markup.matchAll(/<polyline class="connection" points="([^"]+)"/g)];
+    const [x, y] = paths[0][1].split(' ')[0].split(',').map(Number);
+    assert.equal(paths[1][1].split(' ')[0], `${x},${y}`, 'Both daughter branches start at the junction');
+    if (total) {
+      assert.match(markup, new RegExp(`<circle class="isa-total" cx="${x}" cy="${y}" r="5"/>`));
+      assert.match(ER.svg(model), /\.isa-total\{fill:#203532\}/);
+    } else assert.doesNotMatch(markup, /class="isa-total"/);
+    assert.match(markup, /<polygon class="isa-arrow"/);
+  }
+  Object.assign(model.hierarchies[0], { total: true, disjoint: true });
+  assert.equal(ER.serialize(model), original);
+});
+
 test('ER esteso e ristrutturazione: alberi, ISA, copie, cardinalità e identificatori', () => {
   const source = ER.parse(hierarchy), before = ER.copy(source);
   assert.equal(source.entities[0].attributes[1].children[0].name, 'via');
