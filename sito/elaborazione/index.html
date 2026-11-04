@@ -197,6 +197,10 @@ label.field {
 .settings .primary {
   width:100%
 }
+#result-display {
+  width:100%;
+  margin-bottom:12px
+}
 .example-link {
   background:none;
   border:0;
@@ -973,7 +977,7 @@ label.field {
       <label class="field" for="bit-count">Dimensione del registro</label>
       <div class="presets" aria-label="Dimensioni rapide"><button type="button" data-n="4">4 bit</button><button type="button" data-n="8" class="active">8 bit</button><button type="button" data-n="12">12 bit</button><button type="button" data-n="16">16 bit</button></div>
       <div class="n-input"><input id="bit-count" type="number" min="1" max="1024" step="1" value="8" inputmode="numeric"><span>bit</span></div><p class="limit">Qualsiasi dimensione da 1 a 1024 bit.</p>
-      <form id="convert-form" novalidate><label class="field" id="number-label" for="number-input">Numero decimale</label><input id="number-input" type="text" inputmode="numeric" value="13" autocomplete="off" spellcheck="false" aria-describedby="input-help"><div id="second-operand" hidden><label class="field" for="second-input">Secondo operando B · decimale</label><input id="second-input" type="text" inputmode="numeric" value="-5" autocomplete="off" spellcheck="false" aria-describedby="input-help"></div><p class="input-help" id="input-help">Inserisci un numero naturale, per esempio 13.</p><button class="primary" id="convert-button" type="submit">Converti / Mostra passaggi</button></form>
+      <form id="convert-form" novalidate><label class="field" id="number-label" for="number-input">Numero decimale</label><input id="number-input" type="text" inputmode="numeric" value="13" autocomplete="off" spellcheck="false" aria-describedby="input-help"><div id="second-operand" hidden><label class="field" for="second-input">Secondo operando B · decimale</label><input id="second-input" type="text" inputmode="numeric" value="-5" autocomplete="off" spellcheck="false" aria-describedby="input-help"></div><p class="input-help" id="input-help">Inserisci un numero naturale, per esempio 13.</p><label class="field" for="result-display">Mostra il risultato</label><select id="result-display"><option value="animated">Con animazione</option><option value="instant">Subito</option></select><button class="primary" id="convert-button" type="submit">Converti / Mostra passaggi</button></form>
       <div class="ranges" aria-label="Intervalli rappresentabili">
         <p class="encoding-info">N è il numero di bit. Ogni bit ha 2 stati: le informazioni codificabili (configurazioni binarie) sono 2<sup>N</sup> = <span id="configuration-count"></span>.</p>
         <div class="range" id="range-u"><div class="range-title">Naturali · unsigned</div><div class="range-value" id="unsigned-range"></div><p class="range-formula">min = 0<br>max = 2<sup>N</sup> − 1<br>Valori distinti: 2<sup>N</sup></p></div>
@@ -1230,7 +1234,7 @@ function showError(error) { $('error').hidden = false; $('error').innerHTML = `<
 function prepare() {
   stop(); updateRanges();
   $('visual').scrollTop = 0; $('visual').scrollLeft = 0;
-  try {lesson = mode === 'sum' ? makeSumLesson(getN(),$('number-input').value,$('second-input').value) : makeLesson(getN(),mode,direction,rep,$('number-input').value,$('quick-method').checked); step = 0; $('error').hidden = true; render();}
+  try {lesson = mode === 'sum' ? makeSumLesson(getN(),$('number-input').value,$('second-input').value) : makeLesson(getN(),mode,direction,rep,$('number-input').value,$('quick-method').checked); step = $('result-display').value === 'instant' ? lesson.frames.length - 1 : 0; $('error').hidden = true; render();}
   catch (error) {lesson = null; step = 0; showError(error); render();}
 }
 function renderBits(bits, n, frame, small, interactive = false, unsigned = false) {
@@ -1282,7 +1286,7 @@ function render() {
   $('representation-toolbar').hidden = sumMode;
   $('directions').hidden = signed; $('representations').hidden = mode !== 'signed'; $('quick-label').hidden = mode !== 'signed' || rep !== 'c2'; $('sign-legend').hidden = !signed;
   $('second-operand').hidden = !sumMode; $('sum-examples').hidden = !sumMode;
-  $('convert-button').textContent = sumMode ? 'Somma / Mostra passaggi' : 'Converti / Mostra passaggi';
+  $('convert-button').textContent = (sumMode ? 'Somma' : 'Converti') + ($('result-display').value === 'instant' ? '' : ' / Mostra passaggi');
   $('lesson-title').textContent = sumMode ? 'Somma algebrica in C2' : signed ? {sm:'Segno e modulo',c1:'Complemento a uno',c2:'Complemento a due'}[rep] : direction === 'dec' ? 'Divisioni successive' : 'Somma delle potenze di 2';
   $('lesson-subtitle').textContent = sumMode ? 'Somma i bit, propaga i riporti, controlla il segno.' : signed ? (rep === 'sm' ? 'Un bit per il segno. Gli altri per il valore assoluto.' : rep === 'c1' ? 'Per i negativi, inverti tutti i bit del modulo.' : $('quick-method').checked ? 'Da destra: conserva fino al primo 1, poi inverti.' : 'Per i negativi: inverti i bit, poi aggiungi 1.') : direction === 'dec' ? 'Dividi per 2. Conserva i resti. Leggili dal basso.' : 'Moltiplica ogni bit per il suo peso, poi somma.';
   $('lesson-badge').textContent = sumMode ? 'A + B · C2' : signed ? (rep === 'sm' ? 'S&M' : rep.toUpperCase()) : direction === 'dec' ? 'Base 10 → Base 2' : 'Base 2 → Base 10';
@@ -1295,7 +1299,7 @@ function render() {
   const frame = lesson ? lesson.frames[step] : null;
   $('step-title').textContent = frame ? frame.title : 'Scegli un valore rappresentabile';
   $('step-count').textContent = frame ? `Passaggio ${step} di ${lesson.frames.length - 1}` : 'In attesa';
-  $('note').innerHTML = formatPowers(frame ? frame.note : 'Correggi il numero o aumenta la dimensione del registro, poi premi Converti / Mostra passaggi.');
+  $('note').innerHTML = formatPowers(frame ? frame.note : `Correggi il numero o aumenta la dimensione del registro, poi premi ${$('convert-button').textContent}.`);
   $('carry-explanation').innerHTML = sumMode && frame && (frame.active === 0 || frame.done) ? `<details class="carry-explanation" aria-label="Spiegazione del riporto finale">
         <summary>Perché scartiamo il riporto finale?</summary>
         <p>${formatPowers(lesson.carryRule)}</p>
@@ -1346,11 +1350,12 @@ document.querySelectorAll('[data-mode]').forEach(b => {b.addEventListener('click
 document.querySelectorAll('[data-direction]').forEach(b => b.addEventListener('click',() => {if (direction === b.dataset.direction) return; $('number-input').value = changeInputBase($('number-input').value,direction === 'bin',b.dataset.direction === 'bin'); direction = b.dataset.direction; prepare();}));
 document.querySelectorAll('[data-rep]').forEach(b => b.addEventListener('click',() => {rep = b.dataset.rep; prepare();}));
 $('quick-method').addEventListener('change',prepare);
+$('result-display').addEventListener('change',prepare);
 $('example').addEventListener('click',() => {$('number-input').value = mode === 'signed' ? '-13' : mode === 'sum' ? '13' : direction === 'bin' ? '1101' : '13'; if (mode === 'sum') $('second-input').value = '-5'; prepare();});
 document.querySelectorAll('[data-sum]').forEach(button => button.addEventListener('click',() => {const [a,b] = button.dataset.sum.split(','); $('bit-count').value = '8'; $('number-input').value = a; $('second-input').value = b; prepare();}));
 $('next').addEventListener('click',() => {stop(); advance();}); $('play').addEventListener('click',play); $('reset').addEventListener('click',() => {stop(); step = 0; render();});
 $('speed').addEventListener('change',() => {if (timer !== null) {stop(); play();}});
-for (const id of ['number-input','second-input']) $(id).addEventListener('input',() => {stop(); lesson = null; step = 0; $('error').hidden = true; render(); $('note').textContent = `Numero modificato. Premi ${mode === 'sum' ? 'Somma' : 'Converti'} / Mostra passaggi per iniziare con questo valore.`;});
+for (const id of ['number-input','second-input']) $(id).addEventListener('input',() => {stop(); lesson = null; step = 0; $('error').hidden = true; render(); $('note').textContent = `Numero modificato. Premi ${$('convert-button').textContent} per iniziare con questo valore.`;});
 $('register').addEventListener('click',event => {const button = event.target.closest('[data-bit]'); if (!button || !lesson) return; const bits = lesson.final.split(''); const i = Number(button.dataset.bit); bits[i] = bits[i] === '0' ? '1' : '0'; $('number-input').value = bits.join(''); prepare();});
 document.addEventListener('visibilitychange',() => {if (document.hidden) stop();});
 prepare();
