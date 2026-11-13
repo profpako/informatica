@@ -936,18 +936,23 @@ $('file-input').addEventListener('change', async event => {
     if (replaceProject(next, importedDerived, raw.display, raw.statement, raw.statementVisible, raw.metadata ?? null)) notify('Progetto aperto. Schema iniziale e ristrutturazione sono conservati.');
   } catch (error) { notify(`Impossibile aprire il progetto: ${error.message}`); }
 });
-const filename = () => model.title.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'schema-er';
-function download(content, type, extension) {
+function filename(extension) {
+  const title = model.title.replace(/[^\p{L}\p{N}._-]+/gu, '-').replace(/^-|-$/g, '') || 'schema';
+  const kind = { json: 'progetto', sql: 'fisico-mysql', txt: 'relazionale' }[extension]
+    || { initial: 'er-iniziale', restructured: 'er-ristrutturato', relational: 'relazionale', physical: 'fisico-mysql', lab: 'laboratorio-query' }[stage];
+  return `${title}-${kind}`;
+}
+function download(content, type, extension, name = filename(extension)) {
   const blob = content instanceof Blob ? content : new Blob([content], { type });
   const url = URL.createObjectURL(blob), link = document.createElement('a');
-  link.href = url; link.download = `${filename()}.${extension}`; document.body.appendChild(link); link.click(); link.remove();
+  link.href = url; link.download = `${name}.${extension}`; document.body.appendChild(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 function exportSVG() {
   return stage === 'relational' ? ER.relationalSVG(derived.relational) : ER.svg(shownModel(), display);
 }
 async function exportPNG() {
-  const svg = exportSVG(), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+  const name = filename('png'), svg = exportSVG(), url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
   try {
     const image = new Image(); image.src = url; await image.decode();
     const b = { w: image.naturalWidth, h: image.naturalHeight }, scale = Math.min(2, 8192 / Math.max(b.w, b.h), Math.sqrt(16000000 / (b.w * b.h)));
@@ -956,7 +961,7 @@ async function exportPNG() {
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw Error('Immagine troppo grande. Usa l’esportazione SVG.');
-    download(blob, 'image/png', 'png');
+    download(blob, 'image/png', 'png', name);
   } finally { URL.revokeObjectURL(url); }
 }
 let exportAction;
@@ -1014,13 +1019,14 @@ $('export-menu').addEventListener('click', async event => {
   } catch (error) { notify(`Esportazione non riuscita: ${error.message}`); }
 });
 document.addEventListener('click', event => { if (!event.target.closest('#export-menu')) $('export-menu').open = false; });
-let beforePrintView;
+let beforePrintView, beforePrintTitle;
 window.addEventListener('beforeprint', () => {
+  beforePrintTitle = document.title; document.title = filename();
   if (!diagramStage()) return;
   beforePrintView = { ...view }; const b = ER.render(shownModel(), '', display).bounds;
   $('diagram').setAttribute('viewBox', `${b.x} ${b.y} ${b.w} ${b.h}`); $('diagram').style.aspectRatio = `${b.w} / ${b.h}`;
 });
-window.addEventListener('afterprint', () => { if (beforePrintView) view = beforePrintView; $('diagram').style.aspectRatio = ''; updateView(); });
+window.addEventListener('afterprint', () => { document.title = beforePrintTitle; if (beforePrintView) view = beforePrintView; $('diagram').style.aspectRatio = ''; updateView(); });
 $('help-button').addEventListener('click', () => $('help-dialog').showModal()); $('close-help').addEventListener('click', () => $('help-dialog').close());
 $('help-dialog').addEventListener('click', event => { if (event.target === $('help-dialog')) { const r = $('help-dialog').getBoundingClientRect(); if (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom) $('help-dialog').close(); } });
 window.addEventListener('beforeunload', event => { if (formDirty || (!storageAvailable && (history.length || textDirty))) { event.preventDefault(); event.returnValue = ''; } });
