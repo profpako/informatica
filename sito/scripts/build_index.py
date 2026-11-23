@@ -43,7 +43,7 @@ class Metadata(HTMLParser):
 
 
 def lesson_cards(root):
-    cards = []
+    cards = {}
     for path in sorted(root.rglob("index.html")):
         relative = path.relative_to(root)
         if len(relative.parts) < 2 or any(p.startswith(".") or p in EXCLUDED for p in relative.parts[:-1]):
@@ -54,21 +54,24 @@ def lesson_cards(root):
         parents = relative.parts[:-2]
         category = " / ".join(p.replace("-", " ").replace("_", " ").capitalize() for p in parents) or "Informatica"
         url = "./" + quote(relative.as_posix(), safe="/")
-        cards.append(f'''<a class="lesson" href="{escape(url, quote=True)}">
+        cards[relative.as_posix()] = f'''<a class="lesson" href="{escape(url, quote=True)}">
             <span class="lesson-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="26" height="19" rx="3"/><path d="M11 28h10M16 24v4m-4-14-3 3 3 3m8-6 3 3-3 3M18 12l-4 9"/></svg></span>
             <div class="lesson-body"><span class="lesson-path">{escape(category)}</span>
               <h3>{escape(title)}</h3><p>{escape(description)}</p>
             </div>
             <span class="open-lesson">Apri la lezione <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v5"/></svg></span>
-          </a>''')
+          </a>'''
     return cards
 
 
 def render(source, cards):
     count = len(cards)
+    remaining = cards.copy()
+    elaborazione = remaining.pop("elaborazione/index.html", "")
     sections = {
         "COUNT": f'<span class="count">{count} {"lezione" if count == 1 else "lezioni"}</span>',
-        "LESSONS": "\n          ".join(cards) or '<p class="empty">Le lezioni saranno disponibili qui.</p>',
+        "ELABORAZIONE": elaborazione,
+        "LESSONS": "\n          ".join(remaining.values()) if count else '<p class="empty">Le lezioni saranno disponibili qui.</p>',
     }
     for name, content in sections.items():
         pattern = rf"(<!-- {name}:START -->).*?(<!-- {name}:END -->)"

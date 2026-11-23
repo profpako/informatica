@@ -31,7 +31,6 @@
     h2 { font-size:1.5rem; letter-spacing:-.035em; margin:0; font-weight:750; }
     .count { color:var(--muted); font-size:.875rem; background:var(--surface); padding:5px 12px; border-radius:20px; white-space:nowrap; }
     .lessons { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px; }
-    .lessons + .lessons { margin-top:22px; }
     .lesson { display:flex; flex-direction:column; padding:28px; border-radius:20px; background:var(--panel); border:1px solid var(--line); text-decoration:none; transition:border-color .18s,box-shadow .18s; min-width:0; }
     .lesson:hover { border-color:var(--blue); box-shadow:0 8px 28px #315efb0e; }
     .lesson:only-child { grid-column:1/-1; display:grid; grid-template-columns:200px minmax(0,1fr); column-gap:32px; padding:30px; }
@@ -83,11 +82,11 @@
       <section class="catalog" id="lezioni" aria-labelledby="catalog-title">
         <div class="catalog-heading"><h2 id="catalog-title">Lezioni e laboratori</h2>
           <!-- COUNT:START -->
-          <span class="count">1 lezione</span>
+          <span class="count">2 lezioni</span>
           <!-- COUNT:END -->
         </div>
         <div class="lessons">
-          <!-- LESSONS:START -->
+          <!-- ELABORAZIONE:START -->
           <a class="lesson" href="./elaborazione/index.html">
             <span class="lesson-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="26" height="19" rx="3"/><path d="M11 28h10M16 24v4m-4-14-3 3 3 3m8-6 3 3-3 3M18 12l-4 9"/></svg></span>
             <div class="lesson-body"><span class="lesson-path">Informatica</span>
@@ -95,9 +94,7 @@
             </div>
             <span class="open-lesson">Apri la lezione <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v5"/></svg></span>
           </a>
-          <!-- LESSONS:END -->
-        </div>
-        <div class="lessons">
+          <!-- ELABORAZIONE:END -->
           <a class="lesson" href="./cpp-visualizer/">
             <span class="lesson-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="26" height="19" rx="3"/><path d="M11 28h10M16 24v4m-4-14-3 3 3 3m8-6 3 3-3 3M18 12l-4 9"/></svg></span>
             <div class="lesson-body"><span class="lesson-path">C++ e Flowchart</span>
@@ -105,6 +102,15 @@
             </div>
             <span class="open-lesson">Apri il laboratorio <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v5"/></svg></span>
           </a>
+          <!-- LESSONS:START -->
+          <a class="lesson" href="./keylogger/index.html">
+            <span class="lesson-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="26" height="19" rx="3"/><path d="M11 28h10M16 24v4m-4-14-3 3 3 3m8-6 3 3-3 3M18 12l-4 9"/></svg></span>
+            <div class="lesson-body"><span class="lesson-path">Informatica</span>
+              <h3>Demo tastiera</h3><p>Simulazione didattica di un keylogger. Mostra in ordine i tasti premuti nel campo di prova.</p>
+            </div>
+            <span class="open-lesson">Apri la lezione <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v5"/></svg></span>
+          </a>
+          <!-- LESSONS:END -->
         </div>
       </section>
     </main>
