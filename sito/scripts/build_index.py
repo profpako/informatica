@@ -1,4 +1,4 @@
-"""Aggiorna l'indice dalle lezioni contenute nelle cartelle e sottocartelle."""
+"""Aggiorna l'indice dalle pagine del sito e dalle applicazioni pubblicate."""
 
 import re
 from html import escape
@@ -8,6 +8,18 @@ from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED = {"node_modules", "__pycache__", "scripts", "tests", "_site", "dist", "build", "assets"}
+PUBLISHED_APPS = {
+    "cpp-visualizer/index.html": (
+        "Laboratorio di programmazione",
+        "Scrivi programmi in C++ o costruisci flowchart ed esplora l’esecuzione passo per passo, le variabili in memoria e le chiamate a funzioni e procedure.",
+        "C++ e Flowchart",
+    ),
+    "student-extractor/index.html": (
+        "Student Extractor",
+        "Gestisci le classi, registra le assenze ed estrai gli studenti per le interrogazioni.",
+        "Strumento per docenti",
+    ),
+}
 
 
 class Metadata(HTMLParser):
@@ -42,36 +54,43 @@ class Metadata(HTMLParser):
             self.heading.append(data)
 
 
-def lesson_cards(root):
+def resource_card(url, title, description, category):
+    summary = f"<p>{escape(description)}</p>" if description else ""
+    return f'''<a class="lesson" href="{escape(url, quote=True)}">
+            <span class="lesson-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="26" height="19" rx="3"/><path d="M11 28h10M16 24v4m-4-14-3 3 3 3m8-6 3 3-3 3M18 12l-4 9"/></svg></span>
+            <div class="lesson-body"><span class="lesson-path">{escape(category)}</span>
+              <h3>{escape(title)}</h3>{summary}
+            </div>
+            <span class="open-lesson">Apri <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v5"/></svg></span>
+          </a>'''
+
+
+def resource_cards(root):
     cards = {}
     for path in sorted(root.rglob("index.html")):
         relative = path.relative_to(root)
-        if len(relative.parts) < 2 or any(p.startswith(".") or p in EXCLUDED for p in relative.parts[:-1]):
+        route = relative.as_posix()
+        if len(relative.parts) < 2 or route in PUBLISHED_APPS:
+            continue
+        if any(part.startswith(".") or part in EXCLUDED for part in relative.parts[:-1]):
             continue
         meta = Metadata(path.read_text(encoding="utf-8-sig"))
         title = " ".join("".join(meta.heading or meta.title).split()) or path.parent.name.replace("-", " ").capitalize()
-        description = meta.description or "Apri la lezione per consultare i materiali e svolgere le attività."
         parents = relative.parts[:-2]
         category = " / ".join(p.replace("-", " ").replace("_", " ").capitalize() for p in parents) or "Informatica"
-        url = "./" + quote(relative.as_posix(), safe="/")
-        cards[relative.as_posix()] = f'''<a class="lesson" href="{escape(url, quote=True)}">
-            <span class="lesson-icon" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="26" height="19" rx="3"/><path d="M11 28h10M16 24v4m-4-14-3 3 3 3m8-6 3 3-3 3M18 12l-4 9"/></svg></span>
-            <div class="lesson-body"><span class="lesson-path">{escape(category)}</span>
-              <h3>{escape(title)}</h3><p>{escape(description)}</p>
-            </div>
-            <span class="open-lesson">Apri la lezione <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M8 4v5"/></svg></span>
-          </a>'''
-    return cards
+        cards[route] = resource_card("./" + quote(route, safe="/"), title, meta.description, category)
+    for path, (title, description, category) in PUBLISHED_APPS.items():
+        cards[path] = resource_card("./" + path.removesuffix("index.html"), title, description, category)
+    ordered = {path: cards[path] for path in ("elaborazione/index.html", "cpp-visualizer/index.html") if path in cards}
+    ordered.update(cards)
+    return ordered
 
 
 def render(source, cards):
     count = len(cards)
-    remaining = cards.copy()
-    elaborazione = remaining.pop("elaborazione/index.html", "")
     sections = {
-        "COUNT": f'<span class="count">{count} {"lezione" if count == 1 else "lezioni"}</span>',
-        "ELABORAZIONE": elaborazione,
-        "LESSONS": "\n          ".join(remaining.values()) if count else '<p class="empty">Le lezioni saranno disponibili qui.</p>',
+        "COUNT": f'<span class="count">{count} {"risorsa" if count == 1 else "risorse"}</span>',
+        "RESOURCES": "\n          ".join(cards.values()) if cards else '<p class="empty">Le risorse saranno disponibili qui.</p>',
     }
     for name, content in sections.items():
         pattern = rf"(<!-- {name}:START -->).*?(<!-- {name}:END -->)"
@@ -83,6 +102,6 @@ def render(source, cards):
 
 if __name__ == "__main__":
     index = ROOT / "index.html"
-    cards = lesson_cards(ROOT)
+    cards = resource_cards(ROOT)
     index.write_text(render(index.read_text(encoding="utf-8"), cards), encoding="utf-8")
-    print(f"Indice aggiornato: {len(cards)} lezioni.")
+    print(f"Indice aggiornato: {len(cards)} risorse.")

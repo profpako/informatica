@@ -1,10 +1,10 @@
 # Informatica · Pasquale De Michele
 
-Lezioni e applicazioni didattiche raccolte in un unico repository.
+Risorse e applicazioni didattiche raccolte in un unico repository.
 
 ## Organizzazione
 
-- `sito/`: sito web delle lezioni, risorse e script di generazione e verifica.
+- `sito/` contiene le pagine del sito e gli script di generazione e verifica.
 - `app/`: applicazioni didattiche, ciascuna nella propria sottocartella.
 - `.github/workflows/`: workflow di pubblicazione del sito.
 
@@ -13,18 +13,20 @@ La pagina iniziale del sito è statica, utilizzabile anche aprendo
 `sito/index.html` direttamente. I comandi seguenti vanno eseguiti dalla radice
 del repository.
 
-## Aggiungere una lezione
+## Aggiungere una risorsa
 
-Inserisci la lezione dentro `sito/`, in una cartella con un file `index.html`.
+Inserisci la pagina dentro `sito/`, in una cartella con un file `index.html`.
 Sono supportate anche le sottocartelle, per esempio
 `sito/reti/indirizzi-ip/index.html`.
-Ogni `index.html` nelle cartelle delle lezioni diventa un collegamento nell'indice.
+Ogni `index.html` nelle sottocartelle diventa un collegamento nell'indice.
 Le cartelle nascoste e quelle tecniche (`scripts`, `tests`, `assets`,
 `node_modules`, `__pycache__`, `_site`, `dist`, `build`) sono escluse.
 
 Il titolo viene letto dal primo contenuto `<h1>` (oppure dal `<title>`).
 La descrizione viene letta da `<meta name="description" content="…">`.
-Le cartelle superiori compaiono come percorso della lezione.
+Le cartelle superiori compaiono come percorso della risorsa. Le applicazioni
+che il workflow copia su Pages sono elencate in `PUBLISHED_APPS` nello script
+`sito/scripts/build_index.py`. Il totale in home conta tutte le schede.
 
 Per aggiornare l'indice locale, senza installare dipendenze:
 
@@ -81,8 +83,8 @@ node sito/scripts/check_theme.js
    avviarlo dalla scheda **Actions → Pubblica le lezioni → Run workflow**.
 
 L'indice viene rigenerato prima di ogni pubblicazione: basta aggiungere o
-rimuovere una cartella di lezione e caricarla su GitHub. I link relativi funzionano
-anche quando il sito si trova sotto il nome del repository.
+rimuovere una cartella in `sito/` e caricare la modifica su GitHub.
+I link relativi funzionano anche quando il sito si trova sotto il nome del repository.
 
 Il workflow pubblica soltanto il contenuto di `sito/`: gli indirizzi del sito
 rimangono invariati, senza aggiungere `/sito/` agli URL. Prima della pubblicazione
