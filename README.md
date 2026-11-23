@@ -85,7 +85,9 @@ rimuovere una cartella di lezione e caricarla su GitHub. I link relativi funzion
 anche quando il sito si trova sotto il nome del repository.
 
 Il workflow pubblica soltanto il contenuto di `sito/`: gli indirizzi del sito
-rimangono invariati, senza aggiungere `/sito/` agli URL. Le applicazioni in
-`app/` sono versionate con Git ma non vengono pubblicate da questo workflow.
+rimangono invariati, senza aggiungere `/sito/` agli URL. Prima della pubblicazione
+il workflow aggiunge il laboratorio C++ e i due file HTML di Student Extractor.
+Il sorgente di Student Extractor si trova in `app/student-extractor/` e la sua
+pagina è disponibile all'indirizzo `/student-extractor/` sotto l'URL del sito.
 
 Riferimento: [workflow personalizzati per GitHub Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).

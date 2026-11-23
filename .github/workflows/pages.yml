@@ -105,6 +105,10 @@ jobs:
           key: ${{ steps.compiler-cache.outputs.cache-primary-key }}
       - name: Includi l'applicazione online verificata
         run: cp -R app/c++_visualizer/pages-lab/dist sito/cpp-visualizer
+      - name: Includi Student Extractor
+        run: |
+          mkdir -p sito/student-extractor
+          cp app/student-extractor/index.html app/student-extractor/student-extractor.html sito/student-extractor/
       - uses: actions/upload-pages-artifact@v4
         with:
           path: 'sito'
