@@ -18,7 +18,8 @@
     #test-area:focus { outline:3px solid var(--blue); outline-offset:3px; }
     #test-area::placeholder { color:var(--muted); opacity:1; }
     .result { margin:0; color:var(--muted); }
-    output { display:block; margin-top:4px; color:var(--ink); font:700 1.5rem/1.3 var(--mono); overflow-wrap:anywhere; }
+    #sequence { display:flex; flex-wrap:wrap; align-items:center; gap:6px; min-height:2.25rem; margin-top:6px; }
+    #sequence kbd { max-width:100%; padding:4px 10px; background:var(--surface); border:1px solid var(--line); border-radius:7px; font:700 1rem/1.4 var(--mono); overflow-wrap:anywhere; }
   </style>
 </head>
 <body>
@@ -28,27 +29,30 @@
     </header>
     <main>
       <h1>Demo tastiera</h1>
-      <p class="intro" id="instructions">Seleziona il campo di prova con un clic o con Tab, poi premi un tasto. Il risultato si azzera quando esci dal campo.</p>
+      <p class="intro" id="instructions">Seleziona il campo di prova con un clic o con Tab, poi premi alcuni tasti. La sequenza si azzera quando esci dal campo.</p>
       <div class="demo">
         <label for="test-area">Campo di prova</label>
         <input id="test-area" type="text" readonly placeholder="Premi un tasto…" aria-describedby="instructions">
-        <p class="result" id="result-label">Ultimo tasto</p>
-        <output for="test-area" aria-labelledby="result-label">In attesa</output>
+        <p class="result" id="result-label">Sequenza dei tasti</p>
+        <div id="sequence" role="log" aria-labelledby="result-label">In attesa</div>
         <noscript><p>Attiva JavaScript per usare la demo.</p></noscript>
       </div>
     </main>
   </div>
   <script>
     const testArea = document.querySelector("#test-area");
-    const result = document.querySelector("output");
+    const sequence = document.querySelector("#sequence");
 
     testArea.addEventListener("keydown", (event) => {
       if (event.isComposing) return;
-      result.value = event.key === " " ? "Spazio" : event.key;
+      if (!sequence.childElementCount) sequence.textContent = "";
+      const key = document.createElement("kbd");
+      key.textContent = event.key === " " ? "Spazio" : event.key;
+      sequence.append(key);
     });
 
     testArea.addEventListener("blur", () => {
-      result.value = "In attesa";
+      sequence.textContent = "In attesa";
     });
   </script>
 </body>
